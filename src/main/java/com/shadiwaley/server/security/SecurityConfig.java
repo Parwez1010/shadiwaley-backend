@@ -32,6 +32,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/initiate").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/verify").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/resend/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/subscriptions/plans").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated()
                 )

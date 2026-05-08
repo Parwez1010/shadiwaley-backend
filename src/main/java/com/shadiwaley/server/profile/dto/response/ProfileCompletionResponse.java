@@ -1,6 +1,5 @@
-package com.shadiwaley.server.onboarding.dto.response;
+package com.shadiwaley.server.profile.dto.response;
 
-import com.shadiwaley.server.profile.dto.response.MissingFieldResponse;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -9,7 +8,7 @@ import java.util.UUID;
 
 @Getter
 @Builder
-public class OnboardingProfileResponse {
+public class ProfileCompletionResponse {
     private UUID profileId;
     private Short completionPct;
     private String profileStatus;

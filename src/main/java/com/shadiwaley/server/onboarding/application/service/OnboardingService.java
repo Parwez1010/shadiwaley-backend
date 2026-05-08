@@ -4,12 +4,13 @@ import com.shadiwaley.server.onboarding.dto.request.OnboardingProfileUpsertReque
 import com.shadiwaley.server.onboarding.dto.request.ParentInfoRequest;
 import com.shadiwaley.server.onboarding.dto.request.PreferenceInfoRequest;
 import com.shadiwaley.server.onboarding.dto.request.ProfileInfoRequest;
-import com.shadiwaley.server.onboarding.dto.response.MissingFieldResponse;
 import com.shadiwaley.server.onboarding.dto.response.OnboardingProfileResponse;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
 import com.shadiwaley.server.preferences.infrastructure.entity.UserPreferences;
 import com.shadiwaley.server.preferences.infrastructure.repository.UserPreferencesRepository;
+import com.shadiwaley.server.profile.application.service.ProfileCompletionService;
+import com.shadiwaley.server.profile.dto.response.ProfileCompletionResponse;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
 import com.shadiwaley.server.security.AuthUser;
@@ -20,8 +21,6 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -32,6 +31,7 @@ public class OnboardingService {
     private final UserProfileRepository userProfileRepository;
     private final ParentProfileRepository parentProfileRepository;
     private final UserPreferencesRepository userPreferencesRepository;
+    private final ProfileCompletionService profileCompletionService;
 
     @Transactional
     public OnboardingProfileResponse upsertProfile(OnboardingProfileUpsertRequest request) {
@@ -61,25 +61,14 @@ public class OnboardingService {
             updatePreferences(preferences, request.getPreferences());
         }
 
-        List<MissingFieldResponse> missingFields = calculateMissingFields(profile, parent, userAccount);
-        short completionPct = calculateCompletion(profile, parent);
-
-        profile.setCompletionPct(completionPct);
-
-        if (completionPct >= 80 && "INCOMPLETE".equals(profile.getProfileStatus())) {
-            profile.setProfileStatus("PENDING_VERIFICATION");
-        }
+        ProfileCompletionResponse completion =
+                profileCompletionService.recalculateAndApply(userAccount, profile, parent);
 
         parentProfileRepository.save(parent);
         userProfileRepository.save(profile);
         userPreferencesRepository.save(preferences);
 
-        return OnboardingProfileResponse.builder()
-                .profileId(profile.getId())
-                .completionPct(profile.getCompletionPct())
-                .profileStatus(profile.getProfileStatus())
-                .missingFields(missingFields)
-                .build();
+        return toOnboardingResponse(completion);
     }
 
     public OnboardingProfileResponse getCompletion() {
@@ -94,14 +83,10 @@ public class OnboardingService {
         ParentProfile parent = parentProfileRepository.findByUserAccountId(userId)
                 .orElseThrow(() -> new EntityNotFoundException("Parent profile not found"));
 
-        List<MissingFieldResponse> missingFields = calculateMissingFields(profile, parent, userAccount);
+        ProfileCompletionResponse completion =
+                profileCompletionService.buildCurrentResponse(userAccount, profile, parent);
 
-        return OnboardingProfileResponse.builder()
-                .profileId(profile.getId())
-                .completionPct(profile.getCompletionPct())
-                .profileStatus(profile.getProfileStatus())
-                .missingFields(missingFields)
-                .build();
+        return toOnboardingResponse(completion);
     }
 
     private void updateParent(ParentProfile parent, ParentInfoRequest request) {
@@ -145,111 +130,13 @@ public class OnboardingService {
         if (request.getRequireIdVerified() != null) preferences.setRequireIdVerified(request.getRequireIdVerified());
     }
 
-    private short calculateCompletion(UserProfile profile, ParentProfile parent) {
-        int score = 0;
-
-        if (hasText(parent.getParentName())
-                && parent.getParentRelation() != null
-                && hasText(parent.getParentPhone())
-                && hasText(parent.getDistrict())
-                && hasText(parent.getState())
-                && hasText(parent.getMaslak())) {
-            score += 30;
-        }
-
-        if (hasText(profile.getCandidateFirstName())
-                && profile.getCandidateAge() != null
-                && profile.getCandidateHeightCm() != null
-                && hasText(profile.getEducation())) {
-            score += 25;
-        }
-
-        if (hasText(profile.getQuranLevel())
-                && hasText(profile.getNamaazRegularity())
-                && hasText(parent.getImamReference())) {
-            score += 20;
-        }
-
-        if (hasText(profile.getFamilyType())
-                && hasText(profile.getExpectationsText())) {
-            score += 15;
-        }
-
-        if (("BOY".equals(profile.getUserAccount().getSide().name()) && profile.getMehrOffered() != null)
-                || ("GIRL".equals(profile.getUserAccount().getSide().name()) && profile.getMehrMinimumExpected() != null)) {
-            score += 10;
-        }
-
-        return (short) Math.min(score, 100);
-    }
-
-    private List<MissingFieldResponse> calculateMissingFields(
-            UserProfile profile,
-            ParentProfile parent,
-            UserAccount userAccount
-    ) {
-        List<MissingFieldResponse> missing = new ArrayList<>();
-
-        if (!hasText(parent.getParentName())) {
-            missing.add(missing("PARENT_NAME", "Parent name add karein", "HIGH"));
-        }
-
-        if (parent.getParentRelation() == null) {
-            missing.add(missing("PARENT_RELATION", "Parent relation select karein", "HIGH"));
-        }
-
-        if (!hasText(parent.getDistrict())) {
-            missing.add(missing("DISTRICT", "District add karein", "HIGH"));
-        }
-
-        if (!hasText(parent.getMaslak())) {
-            missing.add(missing("MASLAK", "Maslak select karein", "HIGH"));
-        }
-
-        if (!hasText(profile.getCandidateFirstName())) {
-            missing.add(missing("CANDIDATE_NAME", "Candidate name add karein", "HIGH"));
-        }
-
-        if (profile.getCandidateAge() == null) {
-            missing.add(missing("CANDIDATE_AGE", "Candidate age add karein", "HIGH"));
-        }
-
-        if (!hasText(profile.getEducation())) {
-            missing.add(missing("EDUCATION", "Education add karein", "MEDIUM"));
-        }
-
-        if (!hasText(profile.getQuranLevel())) {
-            missing.add(missing("QURAN_LEVEL", "Quran level add karein", "MEDIUM"));
-        }
-
-        if (!hasText(profile.getNamaazRegularity())) {
-            missing.add(missing("NAMAAZ_REGULARITY", "Namaaz regularity add karein", "MEDIUM"));
-        }
-
-        if (!hasText(parent.getImamReference())) {
-            missing.add(missing("IMAM_REFERENCE", "Imam reference add karein", "HIGH"));
-        }
-
-        if ("BOY".equals(userAccount.getSide().name()) && profile.getMehrOffered() == null) {
-            missing.add(missing("MEHR_OFFERED", "Mehr offered add karein", "HIGH"));
-        }
-
-        if ("GIRL".equals(userAccount.getSide().name()) && profile.getMehrMinimumExpected() == null) {
-            missing.add(missing("MEHR_EXPECTED", "Mehr expected add karein", "HIGH"));
-        }
-
-        return missing;
-    }
-
-    private MissingFieldResponse missing(String field, String label, String priority) {
-        return MissingFieldResponse.builder()
-                .field(field)
-                .label(label)
-                .priority(priority)
+    private OnboardingProfileResponse toOnboardingResponse(ProfileCompletionResponse completion) {
+        return OnboardingProfileResponse.builder()
+                .profileId(completion.getProfileId())
+                .completionPct(completion.getCompletionPct())
+                .profileStatus(completion.getProfileStatus())
+                .readyForReview(completion.isReadyForReview())
+                .missingFields(completion.getMissingFields())
                 .build();
-    }
-
-    private boolean hasText(String value) {
-        return value != null && !value.trim().isEmpty();
     }
 }
