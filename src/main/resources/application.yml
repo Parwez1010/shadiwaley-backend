@@ -42,9 +42,7 @@ app:
     return-otp-in-response: true
 
   storage:
-    mode: local
-    local:
-      upload-dir: ./uploads
+    local-upload-dir: ./uploads
 
 management:
   endpoints:

@@ -69,8 +69,9 @@ public class UserProfile {
     @Column(name = "expectations_text", length = 500)
     private String expectationsText;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "profile_status", nullable = false, length = 40)
-    private String profileStatus;
+    private com.shadiwaley.server.profile.domain.ProfileStatus profileStatus;
 
     @Column(name = "completion_pct", nullable = false)
     private Short completionPct;
@@ -86,7 +87,7 @@ public class UserProfile {
         Instant now = Instant.now();
 
         if (id == null) id = UUID.randomUUID();
-        if (profileStatus == null) profileStatus = "INCOMPLETE";
+        if (profileStatus == null) profileStatus = com.shadiwaley.server.profile.domain.ProfileStatus.INCOMPLETE;
         if (completionPct == null) completionPct = (short) 0;
 
         createdAt = now;
