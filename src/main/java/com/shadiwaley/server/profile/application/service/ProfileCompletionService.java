@@ -218,12 +218,16 @@ public class ProfileCompletionService {
     }
 
     private boolean hasProfilePhoto(UserProfile profile) {
+
         return mediaFileRepository
                 .findByUserProfileIdAndMediaTypeAndPrimaryTrueAndDeletedFalse(
                         profile.getId(),
                         MediaType.PROFILE_PHOTO
                 )
-                .isPresent();
+                .stream()
+                .anyMatch(media ->
+                        media.getReviewStatus() == com.shadiwaley.server.media.domain.MediaReviewStatus.APPROVED
+                );
     }
 
     private boolean hasIdProof(UserProfile profile) {

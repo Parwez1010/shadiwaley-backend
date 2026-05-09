@@ -1,5 +1,6 @@
 package com.shadiwaley.server.onboarding.application.service;
 
+import com.shadiwaley.server.engagement.application.service.MilestoneService;
 import com.shadiwaley.server.onboarding.dto.request.OnboardingProfileUpsertRequest;
 import com.shadiwaley.server.onboarding.dto.request.ParentInfoRequest;
 import com.shadiwaley.server.onboarding.dto.request.PreferenceInfoRequest;
@@ -32,6 +33,7 @@ public class OnboardingService {
     private final ParentProfileRepository parentProfileRepository;
     private final UserPreferencesRepository userPreferencesRepository;
     private final ProfileCompletionService profileCompletionService;
+    private final MilestoneService milestoneService;
 
     @Transactional
     public OnboardingProfileResponse upsertProfile(OnboardingProfileUpsertRequest request) {
@@ -63,6 +65,8 @@ public class OnboardingService {
 
         ProfileCompletionResponse completion =
                 profileCompletionService.recalculateAndApply(userAccount, profile, parent);
+
+        milestoneService.evaluateMilestones(userId);
 
         parentProfileRepository.save(parent);
         userProfileRepository.save(profile);
