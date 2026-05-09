@@ -1,5 +1,6 @@
 package com.shadiwaley.server.media.application.service;
 
+import com.shadiwaley.server.engagement.application.service.MilestoneService;
 import com.shadiwaley.server.media.application.storage.FileStorageService;
 import com.shadiwaley.server.media.application.storage.StoredFile;
 import com.shadiwaley.server.media.domain.MediaReviewStatus;
@@ -41,6 +42,7 @@ public class MediaService {
     private final UserProfileRepository userProfileRepository;
     private final ParentProfileRepository parentProfileRepository;
     private final ProfileCompletionService profileCompletionService;
+    private final MilestoneService milestoneService;
 
     @Transactional
     public MediaUploadResponse upload(
@@ -227,6 +229,8 @@ public class MediaService {
                 .orElseThrow(() -> new EntityNotFoundException("Parent profile not found"));
 
         profileCompletionService.recalculateAndApply(userAccount, userProfile, parentProfile);
+        milestoneService.evaluateMilestones(userId);
+
         userProfileRepository.save(userProfile);
     }
 

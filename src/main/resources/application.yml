@@ -41,6 +41,13 @@ app:
     max-attempts: 5
     return-otp-in-response: true
 
+  bootstrap:
+    super-admin:
+      enabled: true
+      email: superadmin@shadiwaley.com
+      password: SuperAdmin@123
+      full-name: Shadiwaley Super Admin
+
   storage:
     local-upload-dir: ./uploads
 

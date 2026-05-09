@@ -1,0 +1,26 @@
+package com.shadiwaley.server.engagement.domain;
+
+public enum MilestoneCode {
+
+    PROFILE_CREATED,
+
+    PROFILE_50_PERCENT,
+
+    PROFILE_80_PERCENT,
+
+    PROFILE_READY_FOR_REVIEW,
+
+    PROFILE_VERIFIED,
+
+    PROFILE_LIVE,
+
+    PROFILE_PHOTO_UPLOADED,
+
+    ID_PROOF_UPLOADED,
+
+    INCOME_PROOF_UPLOADED,
+
+    IMAM_REFERENCE_ADDED,
+
+    FIRST_MATCH_ACCEPTED
+}

@@ -1,5 +1,8 @@
 package com.shadiwaley.server.security;
 
+import com.shadiwaley.server.employee.domain.EmployeeStatus;
+import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
+import com.shadiwaley.server.employee.infrastructure.repository.EmployeeAccountRepository;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.servlet.FilterChain;
@@ -21,12 +24,14 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
 
     private final JwtService jwtService;
     private final UserAccountRepository userAccountRepository;
+    private final EmployeeAccountRepository employeeAccountRepository;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
 
         return path.startsWith("/api/v1/auth/")
+                || path.startsWith("/api/v1/admin/auth/")
                 || path.equals("/actuator/health");
     }
 
@@ -47,19 +52,15 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
         String token = header.substring(7);
 
         try {
-            UUID userId = jwtService.extractUserId(token);
+            jwtService.isTokenValid(token);
 
-            UserAccount user = userAccountRepository.findById(userId).orElse(null);
+            UUID actorId = jwtService.extractUserId(token);
+            ActorType actorType = jwtService.extractActorType(token);
 
-            if (user != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                user.getId(),
-                                null,
-                                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
-                        );
-
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+            if (actorType == ActorType.CUSTOMER) {
+                authenticateCustomer(actorId);
+            } else if (actorType == ActorType.EMPLOYEE) {
+                authenticateEmployee(actorId);
             }
 
         } catch (Exception ignored) {
@@ -67,5 +68,43 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void authenticateCustomer(UUID userId) {
+        UserAccount user = userAccountRepository.findById(userId).orElse(null);
+
+        if (user == null || SecurityContextHolder.getContext().getAuthentication() != null) {
+            return;
+        }
+
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(
+                        user.getId(),
+                        null,
+                        List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
+                );
+
+        authentication.setDetails(ActorType.CUSTOMER);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    private void authenticateEmployee(UUID employeeId) {
+        EmployeeAccount employee = employeeAccountRepository.findById(employeeId).orElse(null);
+
+        if (employee == null
+                || employee.getStatus() != EmployeeStatus.ACTIVE
+                || SecurityContextHolder.getContext().getAuthentication() != null) {
+            return;
+        }
+
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(
+                        employee.getId(),
+                        null,
+                        List.of(new SimpleGrantedAuthority("ROLE_" + employee.getRole().name()))
+                );
+
+        authentication.setDetails(ActorType.EMPLOYEE);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 }
