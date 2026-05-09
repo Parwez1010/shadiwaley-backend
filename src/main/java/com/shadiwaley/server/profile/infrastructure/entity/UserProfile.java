@@ -1,5 +1,6 @@
 package com.shadiwaley.server.profile.infrastructure.entity;
 
+import com.shadiwaley.server.profile.domain.MaritalStatus;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -35,6 +36,13 @@ public class UserProfile {
 
     @Column(length = 50)
     private String education;
+
+    @Column(length = 50)
+    private String religion;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "marital_status", length = 40)
+    private MaritalStatus maritalStatus;
 
     @Column(name = "quran_level", length = 50)
     private String quranLevel;
@@ -89,6 +97,7 @@ public class UserProfile {
         if (id == null) id = UUID.randomUUID();
         if (profileStatus == null) profileStatus = com.shadiwaley.server.profile.domain.ProfileStatus.INCOMPLETE;
         if (completionPct == null) completionPct = (short) 0;
+        if (religion == null) religion = "ISLAM";
 
         createdAt = now;
         updatedAt = now;

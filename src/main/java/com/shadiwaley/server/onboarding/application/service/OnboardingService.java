@@ -120,6 +120,8 @@ public class OnboardingService {
         if (request.getHouseType() != null) profile.setHouseType(request.getHouseType());
         if (request.getFamilyType() != null) profile.setFamilyType(request.getFamilyType());
         if (request.getExpectationsText() != null) profile.setExpectationsText(request.getExpectationsText());
+        if (request.getReligion() != null) profile.setReligion(request.getReligion());
+        if (request.getMaritalStatus() != null) profile.setMaritalStatus(request.getMaritalStatus());
     }
 
     private void updatePreferences(UserPreferences preferences, PreferenceInfoRequest request) {
