@@ -4,6 +4,7 @@ import com.shadiwaley.server.rishta.domain.RishtaRequestStatus;
 import com.shadiwaley.server.rishta.infrastructure.entity.RishtaRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,4 +22,16 @@ public interface RishtaRequestRepository
             List<RishtaRequestStatus> statuses
     );
     long countByStatus(com.shadiwaley.server.rishta.domain.RishtaRequestStatus status);
+
+    boolean existsBySenderUserIdAndReceiverUserIdAndStatus(
+            UUID senderUserId,
+            UUID receiverUserId,
+            RishtaRequestStatus status
+    );
+
+    List<RishtaRequest> findByStatusAndExpiresAtBefore(
+            RishtaRequestStatus status,
+            Instant now
+    );
+
 }

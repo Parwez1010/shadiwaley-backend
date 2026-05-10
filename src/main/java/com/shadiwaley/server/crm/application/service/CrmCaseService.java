@@ -1,5 +1,8 @@
 package com.shadiwaley.server.crm.application.service;
 
+import com.shadiwaley.server.audit.application.service.AuditLogService;
+import com.shadiwaley.server.audit.domain.AuditAction;
+import com.shadiwaley.server.audit.domain.AuditEntityType;
 import com.shadiwaley.server.crm.domain.*;
 import com.shadiwaley.server.crm.dto.request.*;
 import com.shadiwaley.server.crm.dto.response.*;
@@ -37,6 +40,7 @@ public class CrmCaseService {
     private final UserProfileRepository userProfileRepository;
     private final ParentProfileRepository parentProfileRepository;
     private final EmployeeAccountRepository employeeAccountRepository;
+    private final AuditLogService auditLogService;
 
     @Transactional
     public CrmCaseResponse createCase(CreateCrmCaseRequest request) {
@@ -65,8 +69,16 @@ public class CrmCaseService {
         crmCase.setSummary(request.getSummary());
         crmCase.setCreatedByEmployee(creator);
 
-        return toResponse(crmCaseRepository.save(crmCase));
-    }
+        CrmCase saved = crmCaseRepository.save(crmCase);
+
+        auditLogService.record(
+                AuditAction.CRM_CASE_CREATED,
+                AuditEntityType.CRM_CASE,
+                saved.getId(),
+                "CRM case created"
+        );
+
+        return toResponse(saved);    }
 
     @Transactional(readOnly = true)
     public CrmCasePageResponse getCases(
@@ -127,6 +139,12 @@ public class CrmCaseService {
         crmCase.setStatus(CrmCaseStatus.IN_PROGRESS);
 
         addSystemNote(crmCase, "Case assigned to " + employee.getFullName());
+        auditLogService.record(
+                AuditAction.CRM_CASE_ASSIGNED,
+                AuditEntityType.CRM_CASE,
+                crmCase.getId(),
+                "CRM case assigned to " + employee.getFullName()
+        );
 
         return toResponse(crmCaseRepository.save(crmCase));
     }
@@ -137,6 +155,13 @@ public class CrmCaseService {
 
         crmCase.setStatus(request.getStatus());
         crmCase.setLastOutcome(request.getOutcome());
+
+        auditLogService.record(
+                AuditAction.CRM_CASE_STATUS_CHANGED,
+                AuditEntityType.CRM_CASE,
+                crmCase.getId(),
+                "CRM case status changed to " + request.getStatus()
+        );
 
         if (request.getStatus() == CrmCaseStatus.CLOSED || request.getStatus() == CrmCaseStatus.RESOLVED) {
             crmCase.setClosedAt(Instant.now());
@@ -161,8 +186,16 @@ public class CrmCaseService {
         note.setNoteType(request.getNoteType());
         note.setNote(request.getNote());
 
-        return toNoteResponse(crmCaseNoteRepository.save(note));
-    }
+        CrmCaseNote saved = crmCaseNoteRepository.save(note);
+
+        auditLogService.record(
+                AuditAction.CRM_NOTE_ADDED,
+                AuditEntityType.CRM_CASE,
+                crmCase.getId(),
+                "CRM note added"
+        );
+
+        return toNoteResponse(saved);    }
 
     @Transactional
     public CrmFollowUpResponse createFollowUp(UUID caseId, CreateFollowUpRequest request) {
@@ -179,8 +212,16 @@ public class CrmCaseService {
         crmCase.setNextFollowUpAt(request.getScheduledAt());
         crmCaseRepository.save(crmCase);
 
-        return toFollowUpResponse(crmFollowUpRepository.save(followUp));
-    }
+        CrmFollowUp saved = crmFollowUpRepository.save(followUp);
+
+        auditLogService.record(
+                AuditAction.CRM_FOLLOW_UP_CREATED,
+                AuditEntityType.CRM_CASE,
+                crmCase.getId(),
+                "CRM follow-up scheduled"
+        );
+
+        return toFollowUpResponse(saved);    }
 
     private Specification<CrmCase> specification(
             CrmCaseStatus status,

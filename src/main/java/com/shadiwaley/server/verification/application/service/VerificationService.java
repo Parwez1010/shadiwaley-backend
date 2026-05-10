@@ -1,5 +1,7 @@
 package com.shadiwaley.server.verification.application.service;
 
+import com.shadiwaley.server.audit.domain.AuditAction;
+import com.shadiwaley.server.audit.domain.AuditEntityType;
 import com.shadiwaley.server.media.domain.MediaReviewStatus;
 import com.shadiwaley.server.media.domain.MediaType;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
@@ -33,6 +35,7 @@ public class VerificationService {
     private final ProfileReviewLogRepository reviewLogRepository;
 
     private final com.shadiwaley.server.notification.application.service.NotificationService notificationService;
+    private final com.shadiwaley.server.audit.application.service.AuditLogService auditLogService;
 
     @Transactional(readOnly = true)
     public List<ReviewQueueProfileResponse> getProfilesForReview() {
@@ -57,6 +60,13 @@ public class VerificationService {
 
         userProfileRepository.save(profile);
 
+        auditLogService.record(
+                AuditAction.PROFILE_APPROVED,
+                AuditEntityType.USER_PROFILE,
+                profile.getId(),
+                "Profile approved by reviewer"
+        );
+
         log(profile, ReviewAction.PROFILE_APPROVED, note);
 
         notificationService.create(
@@ -78,6 +88,12 @@ public class VerificationService {
         profile.setProfileStatus(ProfileStatus.REJECTED);
 
         userProfileRepository.save(profile);
+        auditLogService.record(
+                AuditAction.PROFILE_REJECTED,
+                AuditEntityType.USER_PROFILE,
+                profile.getId(),
+                "Profile rejected by reviewer"
+        );
 
         log(profile, ReviewAction.PROFILE_REJECTED, note);
 
@@ -100,6 +116,12 @@ public class VerificationService {
         media.setReviewStatus(MediaReviewStatus.APPROVED);
 
         mediaFileRepository.save(media);
+        auditLogService.record(
+                AuditAction.MEDIA_APPROVED,
+                AuditEntityType.MEDIA_FILE,
+                media.getId(),
+                "Media approved by reviewer"
+        );
 
         log(media.getUserProfile(), ReviewAction.MEDIA_APPROVED, note);
 
@@ -122,6 +144,12 @@ public class VerificationService {
         media.setReviewStatus(MediaReviewStatus.REJECTED);
 
         mediaFileRepository.save(media);
+        auditLogService.record(
+                AuditAction.MEDIA_REJECTED,
+                AuditEntityType.MEDIA_FILE,
+                media.getId(),
+                "Media rejected by reviewer"
+        );
 
         log(media.getUserProfile(), ReviewAction.MEDIA_REJECTED, note);
 

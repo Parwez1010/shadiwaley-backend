@@ -1,5 +1,8 @@
 package com.shadiwaley.server.employee.application.service;
 
+import com.shadiwaley.server.audit.application.service.AuditLogService;
+import com.shadiwaley.server.audit.domain.AuditAction;
+import com.shadiwaley.server.audit.domain.AuditEntityType;
 import com.shadiwaley.server.employee.domain.EmployeeRole;
 import com.shadiwaley.server.employee.domain.EmployeeStatus;
 import com.shadiwaley.server.employee.dto.request.CreateEmployeeRequest;
@@ -31,6 +34,7 @@ public class EmployeeService {
     private final EmployeeAccountRepository employeeAccountRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmployeeMapper employeeMapper;
+    private  final AuditLogService auditLogService;
 
     @Transactional
     public CreateEmployeeResponse createEmployee(CreateEmployeeRequest request) {
@@ -65,6 +69,14 @@ public class EmployeeService {
          * For now, Super Admin can reset password and share temporary password manually.
          */
         EmployeeAccount saved = employeeAccountRepository.save(employee);
+
+        auditLogService.record(
+                AuditAction.EMPLOYEE_CREATED,
+                AuditEntityType.EMPLOYEE_ACCOUNT,
+                saved.getId(),
+                "Employee created: " + saved.getEmail()
+        );
+
 
         return CreateEmployeeResponse.builder()
                 .employeeId(saved.getId())
@@ -111,7 +123,15 @@ public class EmployeeService {
         employee.setEmergencyContact(request.getEmergencyContact());
         employee.setNotes(request.getNotes());
 
-        return employeeMapper.toResponse(employeeAccountRepository.save(employee));
+        EmployeeAccount saved = employeeAccountRepository.save(employee);
+        auditLogService.record(
+                AuditAction.EMPLOYEE_UPDATED,
+                AuditEntityType.EMPLOYEE_ACCOUNT,
+                saved.getId(),
+                "Employee details updated"
+        );
+
+        return employeeMapper.toResponse(saved);
     }
 
     @Transactional
@@ -124,7 +144,15 @@ public class EmployeeService {
 
         employee.setStatus(request.getStatus());
 
-        return employeeMapper.toResponse(employeeAccountRepository.save(employee));
+        EmployeeAccount saved = employeeAccountRepository.save(employee);
+        auditLogService.record(
+                AuditAction.EMPLOYEE_STATUS_CHANGED,
+                AuditEntityType.EMPLOYEE_ACCOUNT,
+                saved.getId(),
+                "Employee status changed to " + saved.getStatus()
+        );
+
+        return employeeMapper.toResponse(saved);
     }
 
     @Transactional
@@ -144,6 +172,12 @@ public class EmployeeService {
         employee.setLockedUntil(null);
 
         employeeAccountRepository.save(employee);
+        auditLogService.record(
+                AuditAction.EMPLOYEE_PASSWORD_RESET,
+                AuditEntityType.EMPLOYEE_ACCOUNT,
+                employee.getId(),
+                "Employee password reset by admin"
+        );
 
         return ResetPasswordResponse.builder()
                 .employeeId(employee.getId())
@@ -165,6 +199,12 @@ public class EmployeeService {
         employee.setDeletedAt(Instant.now());
 
         employeeAccountRepository.save(employee);
+        auditLogService.record(
+                AuditAction.EMPLOYEE_DEACTIVATED,
+                AuditEntityType.EMPLOYEE_ACCOUNT,
+                employee.getId(),
+                "Employee deactivated"
+        );
     }
 
     private EmployeeAccount getEmployee(UUID employeeId) {

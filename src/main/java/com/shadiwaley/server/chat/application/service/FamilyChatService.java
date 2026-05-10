@@ -1,5 +1,8 @@
 package com.shadiwaley.server.chat.application.service;
 
+import com.shadiwaley.server.audit.application.service.AuditLogService;
+import com.shadiwaley.server.audit.domain.AuditAction;
+import com.shadiwaley.server.audit.domain.AuditEntityType;
 import com.shadiwaley.server.chat.domain.*;
 import com.shadiwaley.server.chat.dto.request.ReportChatMessageRequest;
 import com.shadiwaley.server.chat.dto.request.SendChatMessageRequest;
@@ -15,6 +18,7 @@ import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
 import com.shadiwaley.server.rishta.domain.RishtaRequestStatus;
 import com.shadiwaley.server.rishta.infrastructure.entity.RishtaRequest;
+import com.shadiwaley.server.safety.application.service.UserSafetyService;
 import com.shadiwaley.server.security.AuthUser;
 import com.shadiwaley.server.user.domain.UserSide;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
@@ -42,6 +46,8 @@ public class FamilyChatService {
     private final MediaFileRepository mediaFileRepository;
     private final ChatMessageReportRepository reportRepository;
     private final ChatPresenceService chatPresenceService;
+    private final AuditLogService auditLogService;
+    private final UserSafetyService userSafetyService;
 
     @Transactional
     public FamilyChatRoom createRoomForAcceptedRishta(RishtaRequest rishtaRequest) {
@@ -186,6 +192,9 @@ public class FamilyChatService {
 
         UUID receiverUserId = getOtherUserId(room, senderUserId);
 
+        if (userSafetyService.isBlockedBetween(senderUserId, receiverUserId)) {
+            throw new IllegalArgumentException("You cannot send messages in this chat");
+        }
         notificationService.create(
                 receiverUserId,
                 NotificationType.CHAT_OPENED,
@@ -422,6 +431,13 @@ public class FamilyChatService {
         room.setStatus(ChatRoomStatus.BLOCKED);
 
         chatRoomRepository.save(room);
+
+        auditLogService.record(
+                AuditAction.CHAT_ROOM_BLOCKED,
+                AuditEntityType.CHAT_ROOM,
+                room.getId(),
+                "Chat room blocked"
+        );
     }
 
     @Transactional
@@ -435,6 +451,12 @@ public class FamilyChatService {
         room.setClosedAt(Instant.now());
 
         chatRoomRepository.save(room);
+        auditLogService.record(
+                AuditAction.CHAT_ROOM_CLOSED,
+                AuditEntityType.CHAT_ROOM,
+                room.getId(),
+                "Chat room closed"
+        );
     }
 
     @Transactional
@@ -469,6 +491,12 @@ public class FamilyChatService {
         message.setModerationStatus(ChatModerationStatus.UNDER_REVIEW);
 
         chatMessageRepository.save(message);
+        auditLogService.record(
+                AuditAction.CHAT_MESSAGE_REPORTED,
+                AuditEntityType.CHAT_MESSAGE,
+                message.getId(),
+                "Chat message reported: " + request.getReason()
+        );
     }
 
     public void sendTyping(UUID roomId, UUID senderUserId) {

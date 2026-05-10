@@ -9,6 +9,7 @@ import com.shadiwaley.server.media.domain.MediaVisibility;
 import com.shadiwaley.server.media.domain.WhatsappConsent;
 import com.shadiwaley.server.media.dto.response.GroupedMediaResponse;
 import com.shadiwaley.server.media.dto.response.MediaUploadResponse;
+import com.shadiwaley.server.media.dto.response.MediaViewResponse;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
 import com.shadiwaley.server.media.infrastructure.repository.MediaFileRepository;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
@@ -16,6 +17,7 @@ import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepos
 import com.shadiwaley.server.profile.application.service.ProfileCompletionService;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
+import com.shadiwaley.server.rishta.domain.RishtaRequestStatus;
 import com.shadiwaley.server.security.AuthUser;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
@@ -43,6 +45,8 @@ public class MediaService {
     private final ParentProfileRepository parentProfileRepository;
     private final ProfileCompletionService profileCompletionService;
     private final MilestoneService milestoneService;
+
+    private final com.shadiwaley.server.rishta.infrastructure.repository.RishtaRequestRepository rishtaRequestRepository;
 
     @Transactional
     public MediaUploadResponse upload(
@@ -338,5 +342,42 @@ public class MediaService {
                 .reviewStatus(mediaFile.getReviewStatus())
                 .uploadedAt(mediaFile.getCreatedAt())
                 .build();
+    }
+
+    public MediaViewResponse viewMedia(UUID mediaId) {
+        UUID currentUserId = AuthUser.getCurrentUserId();
+
+        MediaFile media = mediaFileRepository.findByIdAndDeletedFalse(mediaId)
+                .orElseThrow(() -> new EntityNotFoundException("Media file not found"));
+
+        boolean owner = media.getUserAccount().getId().equals(currentUserId);
+        boolean connectedFamily = isConnectedFamily(currentUserId, media.getUserAccount().getId());
+
+        if (!owner && !connectedFamily) {
+            throw new IllegalArgumentException("You are not allowed to view this media");
+        }
+
+        byte[] content = fileStorageService.load(media.getStorageKey());
+
+        return MediaViewResponse.builder()
+                .fileName(media.getOriginalFileName())
+                .contentType(media.getContentType())
+                .content(content)
+                .build();
+    }
+
+    private boolean isConnectedFamily(UUID currentUserId, UUID mediaOwnerUserId) {
+        return rishtaRequestRepository
+                .existsBySenderUserIdAndReceiverUserIdAndStatus(
+                        currentUserId,
+                        mediaOwnerUserId,
+                        RishtaRequestStatus.ACCEPTED
+                )
+                || rishtaRequestRepository
+                .existsBySenderUserIdAndReceiverUserIdAndStatus(
+                        mediaOwnerUserId,
+                        currentUserId,
+                        RishtaRequestStatus.ACCEPTED
+                );
     }
 }

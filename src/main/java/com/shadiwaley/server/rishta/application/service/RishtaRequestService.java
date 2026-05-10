@@ -1,8 +1,13 @@
 package com.shadiwaley.server.rishta.application.service;
 
+import com.shadiwaley.server.audit.application.service.AuditLogService;
+import com.shadiwaley.server.audit.domain.AuditAction;
+import com.shadiwaley.server.audit.domain.AuditEntityType;
+import com.shadiwaley.server.chat.application.service.FamilyChatService;
 import com.shadiwaley.server.media.domain.MediaReviewStatus;
 import com.shadiwaley.server.media.domain.MediaType;
 import com.shadiwaley.server.media.infrastructure.repository.MediaFileRepository;
+import com.shadiwaley.server.notification.application.service.NotificationService;
 import com.shadiwaley.server.notification.domain.NotificationType;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
@@ -14,7 +19,10 @@ import com.shadiwaley.server.rishta.dto.request.CreateRishtaRequest;
 import com.shadiwaley.server.rishta.dto.response.RishtaRequestResponse;
 import com.shadiwaley.server.rishta.infrastructure.entity.RishtaRequest;
 import com.shadiwaley.server.rishta.infrastructure.repository.RishtaRequestRepository;
+import com.shadiwaley.server.safety.application.service.UserSafetyService;
 import com.shadiwaley.server.security.AuthUser;
+import com.shadiwaley.server.subscription.application.service.SubscriptionService;
+import com.shadiwaley.server.subscription.domain.SubscriptionFeature;
 import com.shadiwaley.server.user.domain.UserSide;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
@@ -36,14 +44,22 @@ public class RishtaRequestService {
     private final UserProfileRepository userProfileRepository;
     private final ParentProfileRepository parentProfileRepository;
     private final MediaFileRepository mediaFileRepository;
+    private final AuditLogService auditLogService;
+    private final SubscriptionService subscriptionService;
 
-    private final com.shadiwaley.server.notification.application.service.NotificationService notificationService;
-    private final com.shadiwaley.server.chat.application.service.FamilyChatService familyChatService;
+    private final NotificationService notificationService;
+    private final FamilyChatService familyChatService;
+    private final UserSafetyService userSafetyService;
 
     @Transactional
     public void sendRequest(CreateRishtaRequest request) {
 
         UUID senderUserId = AuthUser.getCurrentUserId();
+
+        subscriptionService.validateFeatureAccess(
+                senderUserId,
+                SubscriptionFeature.RISHTA_REQUEST
+        );
 
         UserAccount senderUser = getUser(senderUserId);
 
@@ -82,6 +98,15 @@ public class RishtaRequestService {
         rishta.setSenderNote(request.getSenderNote());
 
         RishtaRequest saved = rishtaRequestRepository.save(rishta);
+
+        subscriptionService.incrementRishtaUsage(senderUserId);
+
+        auditLogService.record(
+                AuditAction.RISHTA_REQUEST_SENT,
+                AuditEntityType.RISHTA_REQUEST,
+                saved.getId(),
+                "Rishta request sent"
+        );
 
         notificationService.create(
                 receiverUser.getId(),
@@ -128,12 +153,27 @@ public class RishtaRequestService {
             throw new IllegalArgumentException("Only pending requests can be accepted");
         }
 
+        subscriptionService.validateFeatureAccess(
+                request.getSenderUser().getId(),
+                SubscriptionFeature.CHAT_ROOM
+        );
+
         request.setStatus(RishtaRequestStatus.ACCEPTED);
         request.setAcceptedAt(Instant.now());
         request.setChatEnabled(true);
 
         RishtaRequest saved = rishtaRequestRepository.save(request);
         familyChatService.createRoomForAcceptedRishta(saved);
+
+        subscriptionService.incrementChatRoomUsage(request.getSenderUser().getId());
+
+        auditLogService.record(
+                AuditAction.RISHTA_REQUEST_ACCEPTED,
+                AuditEntityType.RISHTA_REQUEST,
+                saved.getId(),
+                "Rishta request accepted"
+        );
+
 
         notificationService.create(
                 request.getSenderUser().getId(),
@@ -163,6 +203,13 @@ public class RishtaRequestService {
         request.setRejectedAt(Instant.now());
 
         rishtaRequestRepository.save(request);
+
+        auditLogService.record(
+                AuditAction.RISHTA_REQUEST_REJECTED,
+                AuditEntityType.RISHTA_REQUEST,
+                request.getId(),
+                "Rishta request rejected"
+        );
 
         notificationService.create(
                 request.getSenderUser().getId(),
@@ -195,6 +242,10 @@ public class RishtaRequestService {
 
         if (senderUser.getSide() == receiverUser.getSide()) {
             throw new IllegalArgumentException("Rishta requests are allowed only between opposite profile types");
+        }
+
+        if (userSafetyService.isBlockedBetween(senderUser.getId(), receiverUser.getId())) {
+            throw new IllegalArgumentException("You cannot send a rishta request to this family");
         }
     }
 
