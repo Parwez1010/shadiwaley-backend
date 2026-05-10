@@ -17,6 +17,8 @@ import com.shadiwaley.server.profile.dto.response.ProfileDetailResponse;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
 import com.shadiwaley.server.security.AuthUser;
+import com.shadiwaley.server.subscription.application.service.SubscriptionService;
+import com.shadiwaley.server.subscription.domain.SubscriptionFeature;
 import com.shadiwaley.server.user.domain.UserSide;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
@@ -43,6 +45,7 @@ public class ProfileBrowseService {
     private final UserPreferencesRepository userPreferencesRepository;
     private final MediaFileRepository mediaFileRepository;
     private final MatchScoreService matchScoreService;
+    private final SubscriptionService subscriptionService;
 
     @Transactional(readOnly = true)
     public BrowseProfilesResponse browse(BrowseProfileFilterRequest filter) {
@@ -84,6 +87,11 @@ public class ProfileBrowseService {
     public ProfileDetailResponse getProfileDetail(UUID profileId) {
         UUID viewerUserId = AuthUser.getCurrentUserId();
 
+        subscriptionService.validateFeatureAccess(
+                viewerUserId,
+                SubscriptionFeature.PROFILE_VIEW
+        );
+
         UserAccount viewerAccount = getViewerAccount(viewerUserId);
         UserProfile viewerProfile = getViewerProfile(viewerUserId);
         ParentProfile viewerParent = getViewerParent(viewerUserId);
@@ -113,6 +121,8 @@ public class ProfileBrowseService {
                 candidate,
                 candidateParent
         );
+
+        subscriptionService.incrementProfileViewUsage(viewerUserId);
 
         return ProfileDetailResponse.builder()
                 .profileId(candidate.getId())

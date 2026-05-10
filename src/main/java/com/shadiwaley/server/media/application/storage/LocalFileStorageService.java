@@ -61,4 +61,20 @@ public class LocalFileStorageService implements FileStorageService {
 
         return fileName.substring(dotIndex);
     }
+
+    @Override
+    public byte[] load(String storageKey) {
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get(storageKey).normalize();
+
+            if (!java.nio.file.Files.exists(path)) {
+                throw new IllegalArgumentException("File not found");
+            }
+
+            return java.nio.file.Files.readAllBytes(path);
+
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Unable to read file");
+        }
+    }
 }

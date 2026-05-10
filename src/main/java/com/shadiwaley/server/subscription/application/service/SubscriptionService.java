@@ -4,13 +4,16 @@ import com.shadiwaley.server.security.AuthUser;
 import com.shadiwaley.server.subscription.domain.PlanCatalog;
 import com.shadiwaley.server.subscription.domain.PlanDefinition;
 import com.shadiwaley.server.subscription.domain.PlanType;
+import com.shadiwaley.server.subscription.domain.SubscriptionFeature;
 import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
 import com.shadiwaley.server.subscription.dto.request.SelectPlanRequest;
 import com.shadiwaley.server.subscription.dto.response.PlanFeatureResponse;
 import com.shadiwaley.server.subscription.dto.response.PlanResponse;
 import com.shadiwaley.server.subscription.dto.response.SubscriptionResponse;
 import com.shadiwaley.server.subscription.infrastructure.entity.Subscription;
+import com.shadiwaley.server.subscription.infrastructure.entity.UserFeatureUsage;
 import com.shadiwaley.server.subscription.infrastructure.repository.SubscriptionRepository;
+import com.shadiwaley.server.subscription.infrastructure.repository.UserFeatureUsageRepository;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -20,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,6 +33,7 @@ public class SubscriptionService {
 
     private final SubscriptionRepository subscriptionRepository;
     private final UserAccountRepository userAccountRepository;
+    private final UserFeatureUsageRepository userFeatureUsageRepository;
 
     public List<PlanResponse> getPlans() {
         return PlanCatalog.allPlans()
@@ -74,8 +79,144 @@ public class SubscriptionService {
                 .findTopByUserAccountIdAndStatusOrderByCreatedAtDesc(userId, SubscriptionStatus.ACTIVE)
                 .orElseGet(() -> createVirtualFreePlan(userId));
 
+        if (subscription.getExpiresAt() != null && subscription.getExpiresAt().isBefore(Instant.now())) {
+            subscription.setStatus(SubscriptionStatus.EXPIRED);
+            subscriptionRepository.save(subscription);
+
+            Subscription freeSubscription = createVirtualFreePlan(userId);
+            return toSubscriptionResponse(freeSubscription);
+        }
+
         return toSubscriptionResponse(subscription);
     }
+
+    @Transactional
+    public void validateFeatureAccess(UUID userId, SubscriptionFeature feature) {
+        PlanDefinition plan = getCurrentPlanDefinition(userId);
+        UserFeatureUsage usage = getMonthlyUsage(userId);
+
+        switch (feature) {
+            case RISHTA_REQUEST -> validateRishtaRequestAccess(plan, usage);
+
+            case CHAT_ROOM -> validateChatRoomAccess(plan, usage);
+
+            case PROFILE_VIEW -> validateProfileViewAccess(plan, usage);
+
+            case PRIORITY_PROFILE_REVIEW -> {
+                if (!plan.priorityProfileReview()) {
+                    throw new IllegalArgumentException(
+                            "Priority profile review is not available in your current plan."
+                    );
+                }
+            }
+
+            case AUTOPILOT_DISPATCH -> {
+                if (!plan.autopilotDispatch()) {
+                    throw new IllegalArgumentException(
+                            "Autopilot dispatch is not available in your current plan."
+                    );
+                }
+            }
+
+            case DEDICATED_CRM -> {
+                if (!plan.dedicatedCrm()) {
+                    throw new IllegalArgumentException(
+                            "Dedicated CRM support is not available in your current plan."
+                    );
+                }
+            }
+
+            case MEETING_COORDINATION -> {
+                if (!plan.meetingCoordination()) {
+                    throw new IllegalArgumentException(
+                            "Meeting coordination is not available in your current plan."
+                    );
+                }
+            }
+        }
+    }
+
+    @Transactional
+    public void incrementRishtaUsage(UUID userId) {
+        UserFeatureUsage usage = getMonthlyUsage(userId);
+        usage.setRishtaRequestsSent(usage.getRishtaRequestsSent() + 1);
+        userFeatureUsageRepository.save(usage);
+    }
+
+    @Transactional
+    public void incrementProfileViewUsage(UUID userId) {
+        UserFeatureUsage usage = getMonthlyUsage(userId);
+        usage.setProfileViews(usage.getProfileViews() + 1);
+        userFeatureUsageRepository.save(usage);
+    }
+
+    @Transactional
+    public void incrementChatRoomUsage(UUID userId) {
+        UserFeatureUsage usage = getMonthlyUsage(userId);
+        usage.setActiveChatRooms(usage.getActiveChatRooms() + 1);
+        userFeatureUsageRepository.save(usage);
+    }
+
+    public PlanDefinition getCurrentPlanDefinition(UUID userId) {
+        Subscription subscription = subscriptionRepository
+                .findTopByUserAccountIdAndStatusOrderByCreatedAtDesc(userId, SubscriptionStatus.ACTIVE)
+                .orElse(null);
+
+        if (subscription == null) {
+            return PlanCatalog.getPlan(PlanType.FREE_ONBOARDING);
+        }
+
+        if (subscription.getExpiresAt() != null && subscription.getExpiresAt().isBefore(Instant.now())) {
+            return PlanCatalog.getPlan(PlanType.FREE_ONBOARDING);
+        }
+
+        return PlanCatalog.getPlan(subscription.getPlanType());
+    }
+
+    private void validateRishtaRequestAccess(
+            PlanDefinition plan,
+            UserFeatureUsage usage
+    ) {
+        int monthlyLimit = plan.rishtaRequestsPerMonth();
+
+        if (monthlyLimit == -1) {
+            return;
+        }
+
+        if (usage.getRishtaRequestsSent() >= monthlyLimit) {
+            throw new IllegalArgumentException(
+                    "Your monthly rishta request limit has been reached. Please upgrade your plan."
+            );
+        }
+    }
+
+    private void validateChatRoomAccess(
+            PlanDefinition plan,
+            UserFeatureUsage usage
+    ) {
+        if (!plan.familyChat()) {
+            throw new IllegalArgumentException(
+                    "Family chat is not available in your current plan."
+            );
+        }
+    }
+
+    private void validateProfileViewAccess(
+            PlanDefinition plan,
+            UserFeatureUsage usage
+    ) {
+        if (!plan.browseProfiles()) {
+            throw new IllegalArgumentException(
+                    "Profile browsing is limited in your current plan."
+            );
+        }
+
+        /*
+         * If you later add profile view limits to PlanDefinition,
+         * enforce them here.
+         */
+    }
+
 
     private Subscription createVirtualFreePlan(UUID userId) {
         UserAccount userAccount = userAccountRepository.findById(userId)
@@ -88,6 +229,7 @@ public class SubscriptionService {
         subscription.setStatus(SubscriptionStatus.ACTIVE);
         subscription.setActivatedAt(Instant.now());
         subscription.setExpiresAt(Instant.now().plus(Duration.ofDays(30)));
+        subscription.setAutoRenew(false);
 
         return subscription;
     }
@@ -169,5 +311,26 @@ public class SubscriptionService {
                 .label(label)
                 .value(value)
                 .build();
+    }
+
+    private UserFeatureUsage getMonthlyUsage(UUID userId) {
+        String month = java.time.YearMonth.now().toString();
+
+        return userFeatureUsageRepository
+                .findByUserAccountIdAndUsageMonth(userId, month)
+                .orElseGet(() -> {
+                    UserAccount userAccount = userAccountRepository.findById(userId)
+                            .orElseThrow(() -> new EntityNotFoundException("User account not found"));
+
+                    UserFeatureUsage usage = new UserFeatureUsage();
+                    usage.setUserAccount(userAccount);
+                    usage.setUsageDate(LocalDate.now());
+                    usage.setUsageMonth(month);
+                    usage.setRishtaRequestsSent(0);
+                    usage.setProfileViews(0);
+                    usage.setActiveChatRooms(0);
+
+                    return userFeatureUsageRepository.save(usage);
+                });
     }
 }

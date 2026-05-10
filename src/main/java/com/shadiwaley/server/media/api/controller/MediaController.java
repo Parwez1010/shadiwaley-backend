@@ -8,6 +8,7 @@ import com.shadiwaley.server.media.domain.WhatsappConsent;
 import com.shadiwaley.server.media.dto.request.UpdateConsentRequest;
 import com.shadiwaley.server.media.dto.response.GroupedMediaResponse;
 import com.shadiwaley.server.media.dto.response.MediaUploadResponse;
+import com.shadiwaley.server.media.dto.response.MediaViewResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -87,4 +88,20 @@ public class MediaController {
                 mediaService.getGroupedMedia()
         );
     }
+
+    @GetMapping("/{mediaId}/view")
+    public org.springframework.http.ResponseEntity<byte[]> viewMedia(
+            @PathVariable UUID mediaId
+    ) {
+        MediaViewResponse response = mediaService.viewMedia(mediaId);
+
+        return org.springframework.http.ResponseEntity.ok()
+                .header(
+                        org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + response.getFileName() + "\""
+                )
+                .contentType(org.springframework.http.MediaType.parseMediaType(response.getContentType()))
+                .body(response.getContent());
+    }
+
 }

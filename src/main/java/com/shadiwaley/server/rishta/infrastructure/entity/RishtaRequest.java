@@ -54,6 +54,10 @@ public class RishtaRequest {
     @Column(name = "chat_enabled", nullable = false)
     private boolean chatEnabled;
 
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
+
     @Column(name = "created_at")
     private Instant createdAt;
 
@@ -66,6 +70,9 @@ public class RishtaRequest {
 
         if (id == null) id = UUID.randomUUID();
         if (status == null) status = RishtaRequestStatus.PENDING;
+        if (expiresAt == null) {
+            expiresAt = Instant.now().plusSeconds(15L * 24 * 60 * 60);
+        }
 
         createdAt = now;
         updatedAt = now;
