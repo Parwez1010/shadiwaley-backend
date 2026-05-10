@@ -1,5 +1,6 @@
 package com.shadiwaley.server.employee.infrastructure.entity;
 
+import com.shadiwaley.server.employee.domain.EmployeeAccountStatus;
 import com.shadiwaley.server.employee.domain.EmployeeRole;
 import com.shadiwaley.server.employee.domain.EmployeeStatus;
 import jakarta.persistence.*;
@@ -75,6 +76,10 @@ public class EmployeeAccount {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_status", nullable = false, length = 30)
+    private EmployeeAccountStatus accountStatus;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -94,6 +99,9 @@ public class EmployeeAccount {
         if (incentivePerDispatch == null) incentivePerDispatch = 500;
         if (incentivePerEngagement == null) incentivePerEngagement = 2000;
         if (failedLoginAttempts == null) failedLoginAttempts = 0;
+        if (accountStatus == null) {
+            accountStatus = EmployeeAccountStatus.ACTIVE;
+        }
 
         createdAt = now;
         updatedAt = now;

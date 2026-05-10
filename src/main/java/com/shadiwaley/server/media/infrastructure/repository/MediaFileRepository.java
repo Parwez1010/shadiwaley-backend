@@ -23,4 +23,7 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
             UUID userAccountId,
             MediaType mediaType
     );
+    long countByReviewStatusAndDeletedFalse(
+            com.shadiwaley.server.media.domain.MediaReviewStatus reviewStatus
+    );
 }
