@@ -4,6 +4,7 @@ import com.shadiwaley.server.media.domain.MediaReviewStatus;
 import com.shadiwaley.server.media.domain.MediaType;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
 import com.shadiwaley.server.media.infrastructure.repository.MediaFileRepository;
+import com.shadiwaley.server.notification.domain.NotificationType;
 import com.shadiwaley.server.profile.domain.ProfileStatus;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
@@ -31,6 +32,8 @@ public class VerificationService {
     private final UserAccountRepository userAccountRepository;
     private final ProfileReviewLogRepository reviewLogRepository;
 
+    private final com.shadiwaley.server.notification.application.service.NotificationService notificationService;
+
     @Transactional(readOnly = true)
     public List<ReviewQueueProfileResponse> getProfilesForReview() {
 
@@ -55,6 +58,15 @@ public class VerificationService {
         userProfileRepository.save(profile);
 
         log(profile, ReviewAction.PROFILE_APPROVED, note);
+
+        notificationService.create(
+                profile.getUserAccount().getId(),
+                NotificationType.PROFILE_APPROVED,
+                "Profile approved",
+                "Your profile has been approved. You are now ready for the next step.",
+                "/profile",
+                profile.getId()
+        );
     }
 
     @Transactional
@@ -68,6 +80,15 @@ public class VerificationService {
         userProfileRepository.save(profile);
 
         log(profile, ReviewAction.PROFILE_REJECTED, note);
+
+        notificationService.create(
+                profile.getUserAccount().getId(),
+                NotificationType.PROFILE_REJECTED,
+                "Profile needs changes",
+                "Your profile could not be approved yet. Please review the feedback and update the required details.",
+                "/profile",
+                profile.getId()
+        );
     }
 
     @Transactional
@@ -81,6 +102,15 @@ public class VerificationService {
         mediaFileRepository.save(media);
 
         log(media.getUserProfile(), ReviewAction.MEDIA_APPROVED, note);
+
+        notificationService.create(
+                media.getUserAccount().getId(),
+                NotificationType.MEDIA_APPROVED,
+                "Media approved",
+                "Your uploaded media has been reviewed and approved.",
+                "/media",
+                media.getId()
+        );
     }
 
     @Transactional
@@ -94,6 +124,15 @@ public class VerificationService {
         mediaFileRepository.save(media);
 
         log(media.getUserProfile(), ReviewAction.MEDIA_REJECTED, note);
+
+        notificationService.create(
+                media.getUserAccount().getId(),
+                NotificationType.MEDIA_REJECTED,
+                "Media needs changes",
+                "One of your uploaded files could not be approved. Please upload a clearer or correct file.",
+                "/media",
+                media.getId()
+        );
     }
 
     private void log(

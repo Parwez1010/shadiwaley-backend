@@ -22,4 +22,9 @@ public interface EmployeeAccountRepository extends JpaRepository<EmployeeAccount
     List<EmployeeAccount> findByRoleAndDeletedAtIsNullOrderByCreatedAtDesc(EmployeeRole role);
 
     List<EmployeeAccount> findByAssignedDistrictIgnoreCaseAndDeletedAtIsNullOrderByCreatedAtDesc(String assignedDistrict);
+
+    long countByAccountStatus(
+            com.shadiwaley.server.employee.domain.EmployeeAccountStatus accountStatus
+    );
+    long countByRole(com.shadiwaley.server.employee.domain.EmployeeRole role);
 }
