@@ -39,6 +39,8 @@ public class OnboardingService {
     public OnboardingProfileResponse upsertProfile(OnboardingProfileUpsertRequest request) {
         UUID userId = AuthUser.getCurrentUserId();
 
+        upsertProfileForUser(userId, request);
+
         UserAccount userAccount = userAccountRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User account not found"));
 
@@ -48,8 +50,30 @@ public class OnboardingService {
         ParentProfile parent = parentProfileRepository.findByUserAccountId(userId)
                 .orElseThrow(() -> new EntityNotFoundException("Parent profile not found"));
 
-        UserPreferences preferences = userPreferencesRepository.findByUserProfileId(profile.getId())
-                .orElseThrow(() -> new EntityNotFoundException("User preferences not found"));
+        ProfileCompletionResponse completion =
+                profileCompletionService.recalculateAndApply(userAccount, profile, parent);
+
+        return toOnboardingResponse(completion);
+    }
+
+    @Transactional
+    public void upsertProfileForUser(UUID userId, OnboardingProfileUpsertRequest request) {
+        UserAccount userAccount = userAccountRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User account not found"));
+
+        ParentProfile parent = parentProfileRepository.findByUserAccountId(userId)
+                .orElseGet(() -> {
+                    ParentProfile created = new ParentProfile();
+                    created.setUserAccount(userAccount);
+                    return created;
+                });
+
+        UserProfile profile = userProfileRepository.findByUserAccountId(userId)
+                .orElseGet(() -> {
+                    UserProfile created = new UserProfile();
+                    created.setUserAccount(userAccount);
+                    return created;
+                });
 
         if (request.getParent() != null) {
             updateParent(parent, request.getParent());
@@ -59,20 +83,28 @@ public class OnboardingService {
             updateProfile(profile, request.getProfile());
         }
 
+        parentProfileRepository.save(parent);
+        UserProfile savedProfile = userProfileRepository.save(profile);
+
+        UserPreferences preferences = userPreferencesRepository.findByUserProfileId(savedProfile.getId())
+                .orElseGet(() -> {
+                    UserPreferences created = new UserPreferences();
+                    created.setUserProfile(savedProfile);
+                    return created;
+                });
+
         if (request.getPreferences() != null) {
             updatePreferences(preferences, request.getPreferences());
         }
 
+        userPreferencesRepository.save(preferences);
+
         ProfileCompletionResponse completion =
-                profileCompletionService.recalculateAndApply(userAccount, profile, parent);
+                profileCompletionService.recalculateAndApply(userAccount, savedProfile, parent);
 
         milestoneService.evaluateMilestones(userId);
 
-        parentProfileRepository.save(parent);
-        userProfileRepository.save(profile);
-        userPreferencesRepository.save(preferences);
-
-        return toOnboardingResponse(completion);
+        userProfileRepository.save(savedProfile);
     }
 
     public OnboardingProfileResponse getCompletion() {

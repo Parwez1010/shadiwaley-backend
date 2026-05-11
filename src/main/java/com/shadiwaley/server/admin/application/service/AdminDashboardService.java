@@ -22,6 +22,7 @@ import com.shadiwaley.server.profile.infrastructure.repository.UserProfileReposi
 import com.shadiwaley.server.rishta.domain.RishtaRequestStatus;
 import com.shadiwaley.server.rishta.infrastructure.repository.RishtaRequestRepository;
 import com.shadiwaley.server.security.AuthUser;
+import com.shadiwaley.server.subscription.application.service.SubscriptionService;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -54,6 +55,7 @@ public class AdminDashboardService {
     private final EmployeeAccountRepository employeeAccountRepository;
     private final CrmCaseRepository crmCaseRepository;
     private final CrmFollowUpRepository crmFollowUpRepository;
+    private final SubscriptionService subscriptionService;
 
 
     @Transactional(readOnly = true)
@@ -293,22 +295,86 @@ public class AdminDashboardService {
         ParentProfile parent = parentProfileRepository.findByUserAccountId(account.getId())
                 .orElse(null);
 
+        String planType = null;
+        String planDisplayName = null;
+
+        try {
+            var myPlan = subscriptionService.getCurrentPlanDefinition(account.getId());
+            planType = myPlan.planType().name();
+            planDisplayName = myPlan.displayName();
+        } catch (Exception ignored) {
+            planType = "FREE_ONBOARDING";
+            planDisplayName = "Free Onboarding";
+        }
+
         return CrmFamilyListResponse.builder()
                 .userId(account.getId())
                 .profileId(profile.getId())
                 .displayId(profile.getDisplayId())
+
+                .parentName(parent != null ? parent.getParentName() : null)
+                .parentRelation(parent != null && parent.getParentRelation() != null
+                        ? parent.getParentRelation().name()
+                        : null)
                 .phone(account.getPhone())
-                .side(account.getSide())
+
                 .candidateName(profile.getCandidateFirstName())
                 .age(profile.getCandidateAge())
-                .parentName(parent != null ? parent.getParentName() : null)
+                .side(account.getSide())
+
                 .district(parent != null ? parent.getDistrict() : null)
                 .state(parent != null ? parent.getState() : null)
                 .maslak(parent != null ? parent.getMaslak() : null)
-                .completionPct(profile.getCompletionPct())
+
+                .mode(resolveFamilyMode(planType))
+                .planType(planType)
+                .planDisplayName(planDisplayName)
+
                 .profileStatus(profile.getProfileStatus())
+                .displayStatus(resolveDisplayStatus(profile))
+                .completionPct(profile.getCompletionPct())
+
+                .assignedEmployeeId(null)
+                .assignedEmployeeName("Unassigned")
+
+                .createdAt(profile.getCreatedAt())
+                .updatedAt(profile.getUpdatedAt())
                 .build();
     }
+
+    private String resolveFamilyMode(String planType) {
+        if (planType == null) {
+            return "SELF";
+        }
+
+        if (planType.contains("PREMIUM") || planType.contains("ELITE")) {
+            return "AUTOPILOT";
+        }
+
+        return "SELF";
+    }
+
+    private String resolveDisplayStatus(UserProfile profile) {
+        if (profile.getProfileStatus() == null) {
+            return "UNKNOWN";
+        }
+
+        return switch (profile.getProfileStatus()) {
+
+            case INCOMPLETE -> "Incomplete";
+
+            case READY_FOR_REVIEW,
+                 PENDING_VERIFICATION -> "Verifying";
+
+            case LIVE,
+                 VERIFIED -> "Active";
+
+            case SUSPENDED -> "Suspended";
+
+            case REJECTED -> "Rejected";
+        };
+    }
+
 
     @Transactional(readOnly = true)
     public java.util.List<EmployeePerformanceResponse> getEmployeePerformance() {

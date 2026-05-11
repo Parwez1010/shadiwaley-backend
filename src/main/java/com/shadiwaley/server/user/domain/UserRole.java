@@ -1,6 +1,7 @@
 package com.shadiwaley.server.user.domain;
 
 public enum UserRole {
+    CUSTOMER,
     USER,
     PARENT,
     CRM_AGENT,
