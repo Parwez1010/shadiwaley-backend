@@ -16,6 +16,8 @@ import com.shadiwaley.server.media.domain.MediaReviewStatus;
 import com.shadiwaley.server.media.infrastructure.repository.MediaFileRepository;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
+import com.shadiwaley.server.preferences.infrastructure.entity.UserPreferences;
+import com.shadiwaley.server.preferences.infrastructure.repository.UserPreferencesRepository;
 import com.shadiwaley.server.profile.domain.ProfileStatus;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
@@ -56,6 +58,7 @@ public class AdminDashboardService {
     private final CrmCaseRepository crmCaseRepository;
     private final CrmFollowUpRepository crmFollowUpRepository;
     private final SubscriptionService subscriptionService;
+    private final UserPreferencesRepository userPreferencesRepository;
 
 
     @Transactional(readOnly = true)
@@ -244,7 +247,6 @@ public class AdminDashboardService {
         };
     }
 
-
     @Transactional(readOnly = true)
     public CrmFamilyDetailResponse getFamilyDetail(UUID userId) {
         UserAccount account = userAccountRepository.findById(userId)
@@ -256,35 +258,59 @@ public class AdminDashboardService {
         ParentProfile parent = parentProfileRepository.findByUserAccountId(userId)
                 .orElseThrow(() -> new EntityNotFoundException("Parent profile not found"));
 
+        UserPreferences preferences = userPreferencesRepository.findByUserProfileId(profile.getId())
+                .orElse(null);
+
         return CrmFamilyDetailResponse.builder()
                 .userId(account.getId())
                 .profileId(profile.getId())
                 .displayId(profile.getDisplayId())
+
                 .phone(account.getPhone())
                 .side(account.getSide())
                 .accountStatus(account.getAccountStatus())
-                .candidateName(profile.getCandidateFirstName())
-                .age(profile.getCandidateAge())
-                .heightCm(profile.getCandidateHeightCm())
-                .education(profile.getEducation())
-                .quranLevel(profile.getQuranLevel())
-                .namaazRegularity(profile.getNamaazRegularity())
-                .professionType(profile.getProfessionType())
-                .professionTitle(profile.getProfessionTitle())
-                .monthlyIncome(profile.getMonthlyIncome())
-                .familyType(profile.getFamilyType())
-                .expectationsText(profile.getExpectationsText())
+
                 .parentName(parent.getParentName())
                 .parentPhone(parent.getParentPhone())
                 .parentRelation(parent.getParentRelation() != null ? parent.getParentRelation().name() : null)
                 .district(parent.getDistrict())
                 .state(parent.getState())
                 .maslak(parent.getMaslak())
+                .caste(parent.getCaste())
                 .imamReference(parent.getImamReference())
                 .masjidName(parent.getMasjidName())
+
+                .candidateName(profile.getCandidateFirstName())
+                .age(profile.getCandidateAge())
+                .heightCm(profile.getCandidateHeightCm())
+                .education(profile.getEducation())
+                .quranLevel(profile.getQuranLevel())
+                .namaazRegularity(profile.getNamaazRegularity())
+                .previouslyMarried(profile.getPreviouslyMarried())
+                .professionType(profile.getProfessionType())
+                .professionTitle(profile.getProfessionTitle())
+                .monthlyIncome(profile.getMonthlyIncome())
+                .mehrOffered(profile.getMehrOffered())
+                .houseType(profile.getHouseType())
+                .familyType(profile.getFamilyType())
+                .expectationsText(profile.getExpectationsText())
+
+                .preferredMaslak(preferences != null ? preferences.getPreferredMaslak() : null)
+                .preferredCaste(preferences != null ? preferences.getPreferredCaste() : null)
+                .preferredState(preferences != null ? preferences.getPreferredState() : null)
+                .preferredDistrict(preferences != null ? preferences.getPreferredDistrict() : null)
+                .minAge(preferences != null ? preferences.getMinAge() : null)
+                .maxAge(preferences != null ? preferences.getMaxAge() : null)
+                .preferredEducation(preferences != null ? preferences.getPreferredEducation() : null)
+                .preferredFamilyType(preferences != null ? preferences.getPreferredFamilyType() : null)
+                .requireImamRef(preferences != null && preferences.isRequireImamRef())
+                .requireIdVerified(preferences != null && preferences.isRequireIdVerified())
+
                 .completionPct(profile.getCompletionPct())
                 .profileStatus(profile.getProfileStatus())
+
                 .createdAt(profile.getCreatedAt())
+                .updatedAt(profile.getUpdatedAt())
                 .lastLoginAt(account.getLastLoginAt())
                 .build();
     }
@@ -295,13 +321,17 @@ public class AdminDashboardService {
         ParentProfile parent = parentProfileRepository.findByUserAccountId(account.getId())
                 .orElse(null);
 
+        com.shadiwaley.server.preferences.infrastructure.entity.UserPreferences preferences =
+                userPreferencesRepository.findByUserProfileId(profile.getId())
+                        .orElse(null);
+
         String planType = null;
         String planDisplayName = null;
 
         try {
-            var myPlan = subscriptionService.getCurrentPlanDefinition(account.getId());
-            planType = myPlan.planType().name();
-            planDisplayName = myPlan.displayName();
+            var currentPlan = subscriptionService.getCurrentPlanDefinition(account.getId());
+            planType = currentPlan.planType().name();
+            planDisplayName = currentPlan.displayName();
         } catch (Exception ignored) {
             planType = "FREE_ONBOARDING";
             planDisplayName = "Free Onboarding";
@@ -312,19 +342,46 @@ public class AdminDashboardService {
                 .profileId(profile.getId())
                 .displayId(profile.getDisplayId())
 
+                .phone(account.getPhone())
+                .side(account.getSide())
+
                 .parentName(parent != null ? parent.getParentName() : null)
+                .parentPhone(parent != null ? parent.getParentPhone() : null)
                 .parentRelation(parent != null && parent.getParentRelation() != null
                         ? parent.getParentRelation().name()
                         : null)
-                .phone(account.getPhone())
-
-                .candidateName(profile.getCandidateFirstName())
-                .age(profile.getCandidateAge())
-                .side(account.getSide())
-
                 .district(parent != null ? parent.getDistrict() : null)
                 .state(parent != null ? parent.getState() : null)
                 .maslak(parent != null ? parent.getMaslak() : null)
+                .caste(parent != null ? parent.getCaste() : null)
+                .imamReference(parent != null ? parent.getImamReference() : null)
+                .masjidName(parent != null ? parent.getMasjidName() : null)
+
+                .candidateName(profile.getCandidateFirstName())
+                .age(profile.getCandidateAge())
+                .heightCm(profile.getCandidateHeightCm())
+                .education(profile.getEducation())
+                .quranLevel(profile.getQuranLevel())
+                .namaazRegularity(profile.getNamaazRegularity())
+                .previouslyMarried(profile.getPreviouslyMarried())
+                .professionType(profile.getProfessionType())
+                .professionTitle(profile.getProfessionTitle())
+                .monthlyIncome(profile.getMonthlyIncome())
+                .mehrOffered(profile.getMehrOffered())
+                .houseType(profile.getHouseType())
+                .familyType(profile.getFamilyType())
+                .expectationsText(profile.getExpectationsText())
+
+                .preferredMaslak(preferences != null ? preferences.getPreferredMaslak() : null)
+                .preferredCaste(preferences != null ? preferences.getPreferredCaste() : null)
+                .preferredState(preferences != null ? preferences.getPreferredState() : null)
+                .preferredDistrict(preferences != null ? preferences.getPreferredDistrict() : null)
+                .minAge(preferences != null ? preferences.getMinAge() : null)
+                .maxAge(preferences != null ? preferences.getMaxAge() : null)
+                .preferredEducation(preferences != null ? preferences.getPreferredEducation() : null)
+                .preferredFamilyType(preferences != null ? preferences.getPreferredFamilyType() : null)
+                .requireImamRef(preferences != null && preferences.isRequireImamRef())
+                .requireIdVerified(preferences != null && preferences.isRequireIdVerified())
 
                 .mode(resolveFamilyMode(planType))
                 .planType(planType)

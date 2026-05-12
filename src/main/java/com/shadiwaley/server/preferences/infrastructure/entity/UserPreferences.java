@@ -30,6 +30,10 @@ public class UserPreferences {
     @Column(name = "preferred_district", length = 100)
     private String preferredDistrict;
 
+    @Column(name = "preferred_caste", length = 100)
+    private String preferredCaste;
+
+
     @Column(name = "min_age")
     private Short minAge;
 

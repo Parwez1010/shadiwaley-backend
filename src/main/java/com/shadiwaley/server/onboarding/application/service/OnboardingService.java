@@ -134,6 +134,9 @@ public class OnboardingService {
         if (request.getMaslak() != null) parent.setMaslak(request.getMaslak());
         if (request.getImamReference() != null) parent.setImamReference(request.getImamReference());
         if (request.getMasjidName() != null) parent.setMasjidName(request.getMasjidName());
+        if (request.getCaste() != null) {
+            parent.setCaste(request.getCaste());
+        }
     }
 
     private void updateProfile(UserProfile profile, ProfileInfoRequest request) {
@@ -166,6 +169,9 @@ public class OnboardingService {
         if (request.getPreferredFamilyType() != null) preferences.setPreferredFamilyType(request.getPreferredFamilyType());
         if (request.getRequireImamRef() != null) preferences.setRequireImamRef(request.getRequireImamRef());
         if (request.getRequireIdVerified() != null) preferences.setRequireIdVerified(request.getRequireIdVerified());
+        if (request.getPreferredCaste() != null) {
+            preferences.setPreferredCaste(request.getPreferredCaste());
+        }
     }
 
     private OnboardingProfileResponse toOnboardingResponse(ProfileCompletionResponse completion) {
