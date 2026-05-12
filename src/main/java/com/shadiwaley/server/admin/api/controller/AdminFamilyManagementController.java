@@ -3,6 +3,7 @@ package com.shadiwaley.server.admin.api.controller;
 import com.shadiwaley.server.admin.application.service.AdminFamilyService;
 import com.shadiwaley.server.admin.dto.request.AssignFamilyCrmRequest;
 import com.shadiwaley.server.admin.dto.request.CreateAdminFamilyRequest;
+import com.shadiwaley.server.admin.dto.request.DeleteFamilyRequest;
 import com.shadiwaley.server.admin.dto.request.UpdateAdminFamilyStatusRequest;
 import com.shadiwaley.server.admin.dto.response.CrmFamilyDetailResponse;
 import com.shadiwaley.server.common.response.ApiResponse;
@@ -66,6 +67,20 @@ public class AdminFamilyManagementController {
         return ResponseFactory.success(
                 "CRM assigned successfully",
                 adminFamilyService.assignCrm(userId, request)
+        );
+    }
+
+    @PostMapping("/{userId}/delete")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<Void> deleteFamily(
+            @PathVariable UUID userId,
+            @Valid @RequestBody DeleteFamilyRequest request
+    ) {
+        adminFamilyService.deleteFamily(userId, request);
+
+        return ResponseFactory.success(
+                "Family permanently deleted successfully",
+                null
         );
     }
 }

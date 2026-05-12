@@ -2,6 +2,7 @@ package com.shadiwaley.server.admin.application.service;
 
 import com.shadiwaley.server.admin.dto.request.AssignFamilyCrmRequest;
 import com.shadiwaley.server.admin.dto.request.CreateAdminFamilyRequest;
+import com.shadiwaley.server.admin.dto.request.DeleteFamilyRequest;
 import com.shadiwaley.server.admin.dto.request.UpdateAdminFamilyStatusRequest;
 import com.shadiwaley.server.admin.dto.response.CrmFamilyDetailResponse;
 import com.shadiwaley.server.audit.application.service.AuditLogService;
@@ -18,6 +19,7 @@ import com.shadiwaley.server.onboarding.application.service.OnboardingService;
 import com.shadiwaley.server.onboarding.dto.request.OnboardingProfileUpsertRequest;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
+import com.shadiwaley.server.profile.domain.ProfileStatus;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
 import com.shadiwaley.server.security.AuthUser;
@@ -102,13 +104,19 @@ public class AdminFamilyService {
                 .orElseThrow(() -> new EntityNotFoundException("User profile not found"));
 
         profile.setProfileStatus(request.getProfileStatus());
-        userProfileRepository.save(profile);
+
+        UserProfile saved = userProfileRepository.save(profile);
+
+        String reason = request.getReason() == null || request.getReason().isBlank()
+                ? "No reason provided"
+                : request.getReason();
 
         auditLogService.record(
                 AuditAction.SYSTEM_ACTION,
                 AuditEntityType.USER_PROFILE,
-                profile.getId(),
-                "Family profile status changed to " + request.getProfileStatus()
+                saved.getId(),
+                "Family profile status changed to " + request.getProfileStatus(),
+                "reason=" + reason
         );
 
         return adminDashboardService.getFamilyDetail(userId);
@@ -171,5 +179,32 @@ public class AdminFamilyService {
     private UserAccount getUser(UUID userId) {
         return userAccountRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User account not found"));
+    }
+
+    @Transactional
+    public void deleteFamily(UUID userId, DeleteFamilyRequest request) {
+        UserAccount account = userAccountRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User account not found"));
+
+        UserProfile profile = userProfileRepository.findByUserAccountId(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User profile not found"));
+
+        if (profile.getProfileStatus() != ProfileStatus.SUSPENDED) {
+            throw new IllegalArgumentException("Only suspended families can be permanently deleted");
+        }
+
+        String reason = request.getReason() == null || request.getReason().isBlank()
+                ? "No reason provided"
+                : request.getReason();
+
+        auditLogService.record(
+                AuditAction.SYSTEM_ACTION,
+                AuditEntityType.USER_ACCOUNT,
+                account.getId(),
+                "Family permanently deleted by Super Admin",
+                "reason=" + reason + ", phone=" + account.getPhone() + ", profileId=" + profile.getId()
+        );
+
+        userAccountRepository.delete(account);
     }
 }

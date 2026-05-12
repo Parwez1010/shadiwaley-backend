@@ -1,18 +1,15 @@
 package com.shadiwaley.server.admin.dto.request;
 
-import com.shadiwaley.server.profile.domain.ProfileStatus;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
-public class UpdateAdminFamilyStatusRequest {
+public class DeleteFamilyRequest {
 
-    @NotNull(message = "Profile status is required")
-    private ProfileStatus profileStatus;
-
+    @NotBlank(message = "Delete reason is required")
     @Size(max = 500, message = "Reason cannot exceed 500 characters")
     private String reason;
 }
