@@ -15,4 +15,5 @@ public class PreferenceInfoRequest {
     private String preferredFamilyType;
     private Boolean requireImamRef;
     private Boolean requireIdVerified;
+    private String preferredCaste;
 }

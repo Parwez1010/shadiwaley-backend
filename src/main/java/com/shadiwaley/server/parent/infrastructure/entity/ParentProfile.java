@@ -53,6 +53,9 @@ public class ParentProfile {
     @Column(name = "consent_type", length = 30)
     private String consentType;
 
+    @Column(length = 100)
+    private String caste;
+
     @Column(name = "created_at")
     private Instant createdAt;
 

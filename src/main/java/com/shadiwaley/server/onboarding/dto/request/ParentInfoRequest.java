@@ -15,4 +15,5 @@ public class ParentInfoRequest {
     private String maslak;
     private String imamReference;
     private String masjidName;
+    private String caste;
 }
