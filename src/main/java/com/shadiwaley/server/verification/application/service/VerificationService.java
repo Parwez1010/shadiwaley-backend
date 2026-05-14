@@ -1,12 +1,16 @@
 package com.shadiwaley.server.verification.application.service;
 
+import com.shadiwaley.server.audit.application.service.AuditLogService;
 import com.shadiwaley.server.audit.domain.AuditAction;
 import com.shadiwaley.server.audit.domain.AuditEntityType;
 import com.shadiwaley.server.media.domain.MediaReviewStatus;
 import com.shadiwaley.server.media.domain.MediaType;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
 import com.shadiwaley.server.media.infrastructure.repository.MediaFileRepository;
+import com.shadiwaley.server.notification.application.service.NotificationService;
 import com.shadiwaley.server.notification.domain.NotificationType;
+import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
+import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
 import com.shadiwaley.server.profile.domain.ProfileStatus;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
@@ -34,8 +38,9 @@ public class VerificationService {
     private final UserAccountRepository userAccountRepository;
     private final ProfileReviewLogRepository reviewLogRepository;
 
-    private final com.shadiwaley.server.notification.application.service.NotificationService notificationService;
-    private final com.shadiwaley.server.audit.application.service.AuditLogService auditLogService;
+    private final NotificationService notificationService;
+    private final AuditLogService auditLogService;
+    private final ParentProfileRepository parentProfileRepository;
 
     @Transactional(readOnly = true)
     public List<ReviewQueueProfileResponse> getProfilesForReview() {
@@ -46,7 +51,7 @@ public class VerificationService {
                         profile.getProfileStatus() == ProfileStatus.READY_FOR_REVIEW
                                 || profile.getProfileStatus() == ProfileStatus.PENDING_VERIFICATION
                 )
-                .map(this::toQueueResponse)
+                .map(this::toReviewQueueResponse)
                 .toList();
     }
 
@@ -182,45 +187,75 @@ public class VerificationService {
 
         reviewLogRepository.save(log);
     }
+    private ReviewQueueProfileResponse  toReviewQueueResponse(UserProfile profile) {
 
-    private ReviewQueueProfileResponse toQueueResponse(UserProfile profile) {
+        ParentProfile parent = parentProfileRepository
+                .findByUserAccountId(profile.getUserAccount().getId())
+                .orElse(null);
 
-        UUID profileId = profile.getId();
+        boolean hasProfilePhoto = mediaFileRepository
+                .existsByUserProfileIdAndMediaTypeAndReviewStatusAndDeletedFalse(
+                        profile.getId(),
+                        MediaType.PROFILE_PHOTO,
+                        MediaReviewStatus.APPROVED
+                );
 
-        boolean hasProfilePhoto =
-                mediaFileRepository
-                        .findByUserProfileIdAndMediaTypeAndPrimaryTrueAndDeletedFalse(
-                                profileId,
-                                MediaType.PROFILE_PHOTO
-                        )
-                        .isPresent();
+        boolean hasIdProof = mediaFileRepository
+                .existsByUserProfileIdAndMediaTypeAndReviewStatusAndDeletedFalse(
+                        profile.getId(),
+                        MediaType.ID_PROOF,
+                        MediaReviewStatus.APPROVED
+                );
 
-        boolean hasIdProof =
-                !mediaFileRepository
-                        .findByUserAccountIdAndMediaTypeAndDeletedFalse(
-                                profile.getUserAccount().getId(),
-                                MediaType.ID_PROOF
-                        )
-                        .isEmpty();
+        boolean hasIncomeProof = mediaFileRepository
+                .existsByUserProfileIdAndMediaTypeAndReviewStatusAndDeletedFalse(
+                        profile.getId(),
+                        MediaType.INCOME_PROOF,
+                        MediaReviewStatus.APPROVED
+                );
+        boolean profilePhotoVerified = hasProfilePhoto;
 
-        boolean hasIncomeProof =
-                !mediaFileRepository
-                        .findByUserAccountIdAndMediaTypeAndDeletedFalse(
-                                profile.getUserAccount().getId(),
-                                MediaType.INCOME_PROOF
-                        )
-                        .isEmpty();
+        boolean idProofVerified = hasIdProof;
 
-        return ReviewQueueProfileResponse.builder()
+        boolean incomeProofVerified = hasIncomeProof;
+
+        return ReviewQueueProfileResponse .builder()
                 .profileId(profile.getId())
                 .userId(profile.getUserAccount().getId())
+
                 .candidateName(profile.getCandidateFirstName())
+                .familyName(parent != null ? parent.getParentName() : null)
+                .familyName(parent != null ? parent.getParentName() : null)
+                .parentName(parent != null ? parent.getParentName() : null)
+                .parentRelation(parent != null && parent.getParentRelation() != null
+                        ? parent.getParentRelation().name()
+                        : null)
+
                 .phone(profile.getUserAccount().getPhone())
-                .completionPct(profile.getCompletionPct())
+
+                .side(profile.getUserAccount().getSide().name())
+
+                .district(parent != null ? parent.getDistrict() : null)
+                .state(parent != null ? parent.getState() : null)
+                .maslak(parent != null ? parent.getMaslak() : null)
+                .caste(parent != null ? parent.getCaste() : null)
+
+                .phone(profile.getUserAccount().getPhone())
+
+                .district(parent != null ? parent.getDistrict() : null)
+                .state(parent != null ? parent.getState() : null)
+
                 .profileStatus(profile.getProfileStatus())
+                .completionPct(profile.getCompletionPct())
+
                 .hasProfilePhoto(hasProfilePhoto)
                 .hasIdProof(hasIdProof)
                 .hasIncomeProof(hasIncomeProof)
+
+                .profilePhotoVerified(profilePhotoVerified)
+                .idProofVerified(idProofVerified)
+                .incomeProofVerified(incomeProofVerified)
+
                 .createdAt(profile.getCreatedAt())
                 .build();
     }

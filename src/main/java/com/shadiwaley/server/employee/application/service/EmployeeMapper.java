@@ -1,11 +1,17 @@
 package com.shadiwaley.server.employee.application.service;
 
+import com.shadiwaley.server.crm.infrastructure.repository.CrmCaseRepository;
 import com.shadiwaley.server.employee.dto.response.EmployeeResponse;
 import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
+
 public class EmployeeMapper {
+
+    private final CrmCaseRepository crmCaseRepository;
 
     public EmployeeResponse toResponse(EmployeeAccount employee) {
         return EmployeeResponse.builder()
@@ -29,7 +35,9 @@ public class EmployeeMapper {
                 .createdAt(employee.getCreatedAt())
 
                 // placeholders until CRM/Rishta/Engagement modules are built
-                .familiesAssigned(0)
+                .familiesAssigned(
+                        (int) crmCaseRepository.countByAssignedEmployeeId(employee.getId())
+                )
                 .dispatchesThisMonth(0)
                 .engagementsThisMonth(0)
                 .incentiveEarnedThisMonth(employee.getBaseSalary())

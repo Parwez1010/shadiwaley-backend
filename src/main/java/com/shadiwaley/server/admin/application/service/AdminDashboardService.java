@@ -260,6 +260,13 @@ public class AdminDashboardService {
 
         UserPreferences preferences = userPreferencesRepository.findByUserProfileId(profile.getId())
                 .orElse(null);
+        CrmCase crmCase = crmCaseRepository
+                .findTopByUserAccountIdOrderByUpdatedAtDesc(account.getId())
+                .orElse(null);
+
+        EmployeeAccount assignedEmployee = crmCase != null
+                ? crmCase.getAssignedEmployee()
+                : null;
 
         return CrmFamilyDetailResponse.builder()
                 .userId(account.getId())
@@ -309,6 +316,9 @@ public class AdminDashboardService {
                 .completionPct(profile.getCompletionPct())
                 .profileStatus(profile.getProfileStatus())
 
+                .assignedEmployeeId(assignedEmployee != null ? assignedEmployee.getId() : null)
+                .assignedEmployeeName(assignedEmployee != null ? assignedEmployee.getFullName() : "Unassigned")
+
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
                 .lastLoginAt(account.getLastLoginAt())
@@ -321,9 +331,17 @@ public class AdminDashboardService {
         ParentProfile parent = parentProfileRepository.findByUserAccountId(account.getId())
                 .orElse(null);
 
-        com.shadiwaley.server.preferences.infrastructure.entity.UserPreferences preferences =
+        UserPreferences preferences =
                 userPreferencesRepository.findByUserProfileId(profile.getId())
                         .orElse(null);
+
+        CrmCase crmCase = crmCaseRepository
+                .findTopByUserAccountIdOrderByUpdatedAtDesc(account.getId())
+                .orElse(null);
+
+        EmployeeAccount assignedEmployee = crmCase != null
+                ? crmCase.getAssignedEmployee()
+                : null;
 
         String planType = null;
         String planDisplayName = null;
@@ -391,8 +409,8 @@ public class AdminDashboardService {
                 .displayStatus(resolveDisplayStatus(profile))
                 .completionPct(profile.getCompletionPct())
 
-                .assignedEmployeeId(null)
-                .assignedEmployeeName("Unassigned")
+                .assignedEmployeeId(assignedEmployee != null ? assignedEmployee.getId() : null)
+                .assignedEmployeeName(assignedEmployee != null ? assignedEmployee.getFullName() : "Unassigned")
 
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())

@@ -132,10 +132,8 @@ public class AdminFamilyService {
         EmployeeAccount employee = employeeAccountRepository.findById(request.getEmployeeId())
                 .orElseThrow(() -> new EntityNotFoundException("Employee not found"));
 
-        CrmCase crmCase = crmCaseRepository.findTop20ByStatusOrderByUpdatedAtDesc(CrmCaseStatus.OPEN)
-                .stream()
-                .filter(item -> item.getUserAccount().getId().equals(userId))
-                .findFirst()
+        CrmCase crmCase = crmCaseRepository
+                .findTopByUserAccountIdOrderByUpdatedAtDesc(userId)
                 .orElseGet(() -> {
                     CrmCase newCase = new CrmCase();
                     newCase.setUserAccount(account);

@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface CrmCaseRepository extends JpaRepository<CrmCase, UUID>, JpaSpecificationExecutor<CrmCase> {
@@ -15,4 +16,8 @@ public interface CrmCaseRepository extends JpaRepository<CrmCase, UUID>, JpaSpec
     long countByAssignedEmployeeIdAndStatus(UUID employeeId, CrmCaseStatus status);
 
     List<CrmCase> findTop20ByStatusOrderByUpdatedAtDesc(CrmCaseStatus status);
+
+    Optional<CrmCase> findTopByUserAccountIdOrderByUpdatedAtDesc(UUID userAccountId);
+
+    long countByAssignedEmployeeId(UUID assignedEmployeeId);
 }
