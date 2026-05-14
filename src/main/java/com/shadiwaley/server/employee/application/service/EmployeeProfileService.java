@@ -92,8 +92,14 @@ public class EmployeeProfileService {
 
     @Transactional(readOnly = true)
     public EmployeeProfileResponse getProfile(UUID employeeId) {
+        EmployeeAccount employee = getEmployee(employeeId);
+
         EmployeeProfile profile = employeeProfileRepository.findByEmployeeAccountId(employeeId)
-                .orElseThrow(() -> new EntityNotFoundException("Employee profile not found"));
+                .orElseGet(() -> {
+                    EmployeeProfile empty = new EmployeeProfile();
+                    empty.setEmployeeAccount(employee);
+                    return empty;
+                });
 
         return toProfileResponse(profile);
     }

@@ -66,4 +66,7 @@ public class CrmFamilyDetailResponse {
     private Instant createdAt;
     private Instant updatedAt;
     private Instant lastLoginAt;
+    private UUID assignedEmployeeId;
+    private String assignedEmployeeName;
+
 }
