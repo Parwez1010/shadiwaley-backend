@@ -11,6 +11,8 @@ import com.shadiwaley.server.notification.application.service.NotificationServic
 import com.shadiwaley.server.notification.domain.NotificationType;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
+import com.shadiwaley.server.preferences.infrastructure.entity.UserPreferences;
+import com.shadiwaley.server.preferences.infrastructure.repository.UserPreferencesRepository;
 import com.shadiwaley.server.profile.domain.ProfileStatus;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
@@ -18,6 +20,8 @@ import com.shadiwaley.server.security.AuthUser;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import com.shadiwaley.server.verification.domain.ReviewAction;
+import com.shadiwaley.server.verification.dto.response.ReviewMediaResponse;
+import com.shadiwaley.server.verification.dto.response.ReviewProfileDetailResponse;
 import com.shadiwaley.server.verification.dto.response.ReviewQueueProfileResponse;
 import com.shadiwaley.server.verification.infrastructure.entity.ProfileReviewLog;
 import com.shadiwaley.server.verification.infrastructure.repository.ProfileReviewLogRepository;
@@ -25,7 +29,6 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.UUID;
 
@@ -41,6 +44,7 @@ public class VerificationService {
     private final NotificationService notificationService;
     private final AuditLogService auditLogService;
     private final ParentProfileRepository parentProfileRepository;
+    private final UserPreferencesRepository userPreferencesRepository;
 
     @Transactional(readOnly = true)
     public List<ReviewQueueProfileResponse> getProfilesForReview() {
@@ -257,6 +261,124 @@ public class VerificationService {
                 .incomeProofVerified(incomeProofVerified)
 
                 .createdAt(profile.getCreatedAt())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public ReviewProfileDetailResponse getReviewProfileDetail(UUID profileId) {
+
+        UserProfile profile = userProfileRepository.findById(profileId)
+                .orElseThrow(() -> new EntityNotFoundException("Profile not found"));
+
+        UserAccount user = profile.getUserAccount();
+
+        ParentProfile parent = parentProfileRepository
+                .findByUserAccountId(user.getId())
+                .orElse(null);
+
+        UserPreferences preferences = userPreferencesRepository
+                .findByUserProfileId(profile.getId())
+                .orElse(null);
+
+        List<MediaFile> mediaFiles = mediaFileRepository
+                .findByUserProfileIdAndDeletedFalseOrderByCreatedAtDesc(profile.getId());
+
+        boolean hasProfilePhoto = hasMedia(mediaFiles, MediaType.PROFILE_PHOTO);
+        boolean hasIdProof = hasMedia(mediaFiles, MediaType.ID_PROOF);
+        boolean hasIncomeProof = hasMedia(mediaFiles, MediaType.INCOME_PROOF);
+
+        boolean profilePhotoVerified = hasApprovedMedia(mediaFiles, MediaType.PROFILE_PHOTO);
+        boolean idProofVerified = hasApprovedMedia(mediaFiles, MediaType.ID_PROOF);
+        boolean incomeProofVerified = hasApprovedMedia(mediaFiles, MediaType.INCOME_PROOF);
+
+        List<ReviewMediaResponse> mediaResponses = mediaFiles.stream()
+                .map(this::toReviewMediaResponse)
+                .toList();
+
+        return ReviewProfileDetailResponse.builder()
+                .profileId(profile.getId())
+                .userId(user.getId())
+
+                .candidateName(profile.getCandidateFirstName())
+                .side(user.getSide() != null ? user.getSide().name() : null)
+                .phone(user.getPhone())
+
+                .completionPct(profile.getCompletionPct())
+                .profileStatus(profile.getProfileStatus())
+
+                .createdAt(profile.getCreatedAt())
+                .submittedAt(profile.getUpdatedAt())
+
+                .familyName(parent != null ? parent.getParentName() : null)
+                .parentName(parent != null ? parent.getParentName() : null)
+                .parentRelation(parent != null && parent.getParentRelation() != null
+                        ? parent.getParentRelation().name()
+                        : null)
+                .parentPhone(parent != null ? parent.getParentPhone() : null)
+                .district(parent != null ? parent.getDistrict() : null)
+                .state(parent != null ? parent.getState() : null)
+                .maslak(parent != null ? parent.getMaslak() : null)
+                .caste(parent != null ? parent.getCaste() : null)
+
+                .age(profile.getCandidateAge())
+                .heightCm(profile.getCandidateHeightCm())
+                .education(profile.getEducation())
+                .quranLevel(profile.getQuranLevel())
+                .namaazRegularity(profile.getNamaazRegularity())
+                .professionType(profile.getProfessionType())
+                .professionTitle(profile.getProfessionTitle())
+                .monthlyIncome(profile.getMonthlyIncome())
+                .houseType(profile.getHouseType())
+                .familyType(profile.getFamilyType())
+                .expectationsText(profile.getExpectationsText())
+
+                .preferredMaslak(preferences != null ? preferences.getPreferredMaslak() : null)
+                .preferredCaste(preferences != null ? preferences.getPreferredCaste() : null)
+                .preferredState(preferences != null ? preferences.getPreferredState() : null)
+                .preferredDistrict(preferences != null ? preferences.getPreferredDistrict() : null)
+                .minAge(preferences != null ? preferences.getMinAge() : null)
+                .maxAge(preferences != null ? preferences.getMaxAge() : null)
+                .preferredEducation(preferences != null ? preferences.getPreferredEducation() : null)
+                .preferredFamilyType(preferences != null ? preferences.getPreferredFamilyType() : null)
+
+                .hasProfilePhoto(hasProfilePhoto)
+                .hasIdProof(hasIdProof)
+                .hasIncomeProof(hasIncomeProof)
+
+                .profilePhotoVerified(profilePhotoVerified)
+                .idProofVerified(idProofVerified)
+                .incomeProofVerified(incomeProofVerified)
+
+                .imamRefVerified(false)
+                .waliConsentRecorded(false)
+
+                .media(mediaResponses)
+                .build();
+    }
+
+    private boolean hasMedia(List<MediaFile> mediaFiles, MediaType mediaType) {
+        return mediaFiles.stream()
+                .anyMatch(media -> media.getMediaType() == mediaType);
+    }
+
+    private boolean hasApprovedMedia(List<MediaFile> mediaFiles, MediaType mediaType) {
+        return mediaFiles.stream()
+                .anyMatch(media ->
+                        media.getMediaType() == mediaType
+                                && media.getReviewStatus() == MediaReviewStatus.APPROVED
+                );
+    }
+
+    private ReviewMediaResponse toReviewMediaResponse(MediaFile media) {
+        return ReviewMediaResponse.builder()
+                .mediaId(media.getId())
+                .documentId(media.getId())
+                .documentType(media.getMediaType())
+                .fileName(media.getOriginalFileName())
+                .adminPreviewUrl("/api/v1/admin/review/media/" + media.getId() + "/view")
+                .verificationStatus(media.getReviewStatus())
+                .rejectedReason(null)
+                .uploadedAt(media.getCreatedAt())
                 .build();
     }
 }

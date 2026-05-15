@@ -1,9 +1,6 @@
 package com.shadiwaley.server.admin.application.service;
 
-import com.shadiwaley.server.admin.dto.request.AssignFamilyCrmRequest;
-import com.shadiwaley.server.admin.dto.request.CreateAdminFamilyRequest;
-import com.shadiwaley.server.admin.dto.request.DeleteFamilyRequest;
-import com.shadiwaley.server.admin.dto.request.UpdateAdminFamilyStatusRequest;
+import com.shadiwaley.server.admin.dto.request.*;
 import com.shadiwaley.server.admin.dto.response.CrmFamilyDetailResponse;
 import com.shadiwaley.server.audit.application.service.AuditLogService;
 import com.shadiwaley.server.audit.domain.AuditAction;
@@ -204,5 +201,53 @@ public class AdminFamilyService {
         );
 
         userAccountRepository.delete(account);
+    }
+
+    @Transactional
+    public CrmFamilyDetailResponse submitForReview(UUID userId, SubmitFamilyReviewRequest request) {
+        UserAccount account = userAccountRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User account not found"));
+
+        UserProfile profile = userProfileRepository.findByUserAccountId(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User profile not found"));
+
+        ParentProfile parent = parentProfileRepository.findByUserAccountId(userId)
+                .orElseThrow(() -> new EntityNotFoundException("Parent profile not found"));
+
+        validateBeforeSubmit(profile, parent);
+
+        profile.setProfileStatus(ProfileStatus.PENDING_VERIFICATION);
+        userProfileRepository.save(profile);
+
+        String note = request.getNote() == null || request.getNote().isBlank()
+                ? "Family onboarding submitted for review"
+                : request.getNote();
+
+        auditLogService.record(
+                AuditAction.SYSTEM_ACTION,
+                AuditEntityType.USER_PROFILE,
+                profile.getId(),
+                note
+        );
+
+        return adminDashboardService.getFamilyDetail(account.getId());
+    }
+
+    private void validateBeforeSubmit(UserProfile profile, ParentProfile parent) {
+        if (parent.getParentName() == null || parent.getParentName().isBlank()) {
+            throw new IllegalArgumentException("Parent name is required before submitting for review");
+        }
+
+        if (parent.getDistrict() == null || parent.getDistrict().isBlank()) {
+            throw new IllegalArgumentException("District is required before submitting for review");
+        }
+
+        if (profile.getCandidateFirstName() == null || profile.getCandidateFirstName().isBlank()) {
+            throw new IllegalArgumentException("Candidate name is required before submitting for review");
+        }
+
+        if (profile.getCandidateAge() == null) {
+            throw new IllegalArgumentException("Candidate age is required before submitting for review");
+        }
     }
 }

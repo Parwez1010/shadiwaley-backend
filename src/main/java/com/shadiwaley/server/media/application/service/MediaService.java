@@ -22,11 +22,15 @@ import com.shadiwaley.server.security.AuthUser;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -330,17 +334,43 @@ public class MediaService {
     }
 
     private MediaUploadResponse toResponse(MediaFile mediaFile) {
+
+        UUID userId = mediaFile.getUserAccount().getId();
+
         return MediaUploadResponse.builder()
                 .mediaId(mediaFile.getId())
+                .userId(userId)
+                .profileId(mediaFile.getUserProfile().getId())
+
                 .mediaType(mediaFile.getMediaType())
-                .originalFileName(mediaFile.getOriginalFileName())
+
+                .fileName(mediaFile.getOriginalFileName())
                 .contentType(mediaFile.getContentType())
+
+                .size(mediaFile.getFileSizeBytes())
                 .fileSizeBytes(mediaFile.getFileSizeBytes())
+
                 .primary(mediaFile.isPrimary())
+
                 .visibility(mediaFile.getVisibility())
                 .whatsappConsent(mediaFile.getWhatsappConsent())
+
+                .verificationStatus(mediaFile.getReviewStatus())
                 .reviewStatus(mediaFile.getReviewStatus())
+
+                .rejectedReason(null)
+
+                .adminPreviewUrl(
+                        "/api/v1/admin/crm/families/"
+                                + userId
+                                + "/media/"
+                                + mediaFile.getId()
+                                + "/view"
+                )
+
                 .uploadedAt(mediaFile.getCreatedAt())
+                .createdAt(mediaFile.getCreatedAt())
+
                 .build();
     }
 
@@ -380,4 +410,237 @@ public class MediaService {
                         RishtaRequestStatus.ACCEPTED
                 );
     }
+
+    @Transactional(readOnly = true)
+    public MediaViewResponse viewAdminMedia(UUID mediaId) {
+
+        MediaFile media = mediaFileRepository.findByIdAndDeletedFalse(mediaId)
+                .orElseThrow(() -> new EntityNotFoundException("Media file not found"));
+
+        byte[] content = fileStorageService.load(media.getStorageKey());
+
+        return MediaViewResponse.builder()
+                .fileName(media.getOriginalFileName())
+                .contentType(media.getContentType())
+                .content(content)
+                .build();
+    }
+
+    @Transactional
+    public MediaUploadResponse uploadMediaForUser(
+            UUID userId,
+            MediaType mediaType,
+            boolean primary,
+            WhatsappConsent whatsappConsent,
+            MultipartFile file
+    ) {
+        UserAccount userAccount = userAccountRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User account not found"));
+
+        UserProfile userProfile = userProfileRepository.findByUserAccountId(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User profile not found"));
+
+        String storageKey = storeMediaFile(userId, file);
+
+        MediaFile mediaFile = new MediaFile();
+        mediaFile.setUserAccount(userAccount);
+        mediaFile.setUserProfile(userProfile);
+        mediaFile.setMediaType(mediaType);
+        mediaFile.setOriginalFileName(file.getOriginalFilename());
+        mediaFile.setStoredFileName(Paths.get(storageKey).getFileName().toString());
+        mediaFile.setStorageKey(storageKey);
+        mediaFile.setContentType(file.getContentType());
+        mediaFile.setFileSizeBytes(file.getSize());
+        mediaFile.setPrimary(primary);
+        mediaFile.setWhatsappConsent(whatsappConsent);
+        mediaFile.setVisibility(MediaVisibility.PRIVATE);
+        mediaFile.setReviewStatus(MediaReviewStatus.PENDING_REVIEW);
+        mediaFile.setDeleted(false);
+
+        MediaFile saved = mediaFileRepository.save(mediaFile);
+
+        return MediaUploadResponse.builder()
+                .mediaId(saved.getId())
+                .userId(saved.getUserAccount().getId())
+                .profileId(saved.getUserProfile().getId())
+                .mediaType(saved.getMediaType())
+                .fileName(saved.getOriginalFileName())
+                .contentType(saved.getContentType())
+                .fileSizeBytes(saved.getFileSizeBytes())
+                .primary(saved.isPrimary())
+                .whatsappConsent(saved.getWhatsappConsent())
+                .reviewStatus(saved.getReviewStatus())
+                .adminPreviewUrl(
+                        "/api/v1/admin/crm/families/"
+                                + saved.getUserAccount().getId()
+                                + "/media/"
+                                + saved.getId()
+                                + "/view"
+                )               .createdAt(saved.getCreatedAt())
+                .build();
+    }
+
+    private String storeMediaFile(UUID userId, MultipartFile file) {
+        try {
+            String originalName = file.getOriginalFilename() == null
+                    ? "file"
+                    : file.getOriginalFilename();
+
+            String extension = "";
+            int dotIndex = originalName.lastIndexOf(".");
+            if (dotIndex >= 0) {
+                extension = originalName.substring(dotIndex);
+            }
+
+            String storedFileName = UUID.randomUUID() + extension;
+
+            Path directory = Paths.get("uploads", "family-media", userId.toString()).normalize();
+            Files.createDirectories(directory);
+
+            Path target = directory.resolve(storedFileName).normalize();
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+
+            return target.toString();
+
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Unable to upload media file");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<MediaUploadResponse> getFamilyMedia(UUID userId) {
+
+        return mediaFileRepository
+                .findByUserAccountIdAndDeletedFalseOrderByCreatedAtDesc(userId)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public MediaViewResponse viewFamilyMedia(UUID userId, UUID mediaId) {
+
+        MediaFile media = mediaFileRepository.findByIdAndDeletedFalse(mediaId)
+                .orElseThrow(() -> new EntityNotFoundException("Media file not found"));
+
+        if (!media.getUserAccount().getId().equals(userId)) {
+            throw new IllegalArgumentException("Media does not belong to this family");
+        }
+
+        byte[] content = fileStorageService.load(media.getStorageKey());
+
+        return MediaViewResponse.builder()
+                .fileName(media.getOriginalFileName())
+                .contentType(media.getContentType())
+                .content(content)
+                .build();
+    }
+
+    @Transactional
+    public void deleteFamilyMedia(UUID userId, UUID mediaId) {
+
+        MediaFile media = mediaFileRepository.findByIdAndDeletedFalse(mediaId)
+                .orElseThrow(() -> new EntityNotFoundException("Media file not found"));
+
+        if (!media.getUserAccount().getId().equals(userId)) {
+            throw new IllegalArgumentException("Media does not belong to this family");
+        }
+
+        media.setDeleted(true);
+        media.setDeletedAt(Instant.now());
+        media.setPrimary(false);
+
+        mediaFileRepository.save(media);
+
+        recalculateProfileCompletion(
+                userId,
+                media.getUserAccount(),
+                media.getUserProfile()
+        );
+    }
+
+    @Transactional
+    public MediaUploadResponse setPrimaryFamilyMedia(UUID userId, UUID mediaId) {
+
+        MediaFile media = mediaFileRepository.findByIdAndDeletedFalse(mediaId)
+                .orElseThrow(() -> new EntityNotFoundException("Media file not found"));
+
+        if (!media.getUserAccount().getId().equals(userId)) {
+            throw new IllegalArgumentException("Media does not belong to this family");
+        }
+
+        if (media.getMediaType() != MediaType.PROFILE_PHOTO
+                && media.getMediaType() != MediaType.GALLERY_PHOTO) {
+            throw new IllegalArgumentException("Only candidate photos can be marked as primary");
+        }
+
+        mediaFileRepository
+                .findByUserProfileIdAndMediaTypeAndPrimaryTrueAndDeletedFalse(
+                        media.getUserProfile().getId(),
+                        MediaType.PROFILE_PHOTO
+                )
+                .ifPresent(existing -> {
+                    existing.setPrimary(false);
+                    mediaFileRepository.save(existing);
+                });
+
+        media.setPrimary(true);
+        media.setMediaType(MediaType.PROFILE_PHOTO);
+        media.setVisibility(
+                resolveVisibility(
+                        MediaType.PROFILE_PHOTO,
+                        media.getWhatsappConsent()
+                )
+        );
+
+        media.setReviewStatus(MediaReviewStatus.PENDING_REVIEW);
+
+        MediaFile saved = mediaFileRepository.save(media);
+
+        recalculateProfileCompletion(
+                userId,
+                media.getUserAccount(),
+                media.getUserProfile()
+        );
+
+        return toResponse(saved);
+    }
+
+    @Transactional
+    public MediaUploadResponse updateFamilyMediaWhatsappConsent(
+            UUID userId,
+            UUID mediaId,
+            WhatsappConsent whatsappConsent
+    ) {
+
+        MediaFile media = mediaFileRepository.findByIdAndDeletedFalse(mediaId)
+                .orElseThrow(() -> new EntityNotFoundException("Media file not found"));
+
+        if (!media.getUserAccount().getId().equals(userId)) {
+            throw new IllegalArgumentException("Media does not belong to this family");
+        }
+
+        if (media.getMediaType() != MediaType.PROFILE_PHOTO
+                && media.getMediaType() != MediaType.GALLERY_PHOTO) {
+            throw new IllegalArgumentException("Consent can only be updated for candidate photos");
+        }
+
+        media.setWhatsappConsent(whatsappConsent);
+
+        media.setVisibility(
+                resolveVisibility(
+                        media.getMediaType(),
+                        whatsappConsent
+                )
+        );
+
+        MediaFile saved = mediaFileRepository.save(media);
+
+        return toResponse(saved);
+    }
+
+
+
+
+
 }

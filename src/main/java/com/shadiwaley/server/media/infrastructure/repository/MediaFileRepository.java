@@ -27,14 +27,15 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
     long countByReviewStatusAndDeletedFalse(
             com.shadiwaley.server.media.domain.MediaReviewStatus reviewStatus
     );
-    boolean existsByUserProfileIdAndMediaTypeAndDeletedFalse(
-            UUID userProfileId,
-            MediaType mediaType
-    );
 
     boolean existsByUserProfileIdAndMediaTypeAndReviewStatusAndDeletedFalse(
             UUID userProfileId,
             MediaType mediaType,
             MediaReviewStatus reviewStatus
     );
+
+    List<MediaFile> findByUserProfileIdAndDeletedFalseOrderByCreatedAtDesc(UUID userProfileId);
+
+    boolean existsByUserProfileIdAndMediaTypeAndDeletedFalse(UUID userProfileId, MediaType mediaType);
+
 }

@@ -58,55 +58,51 @@ public class OnboardingService {
 
     @Transactional
     public void upsertProfileForUser(UUID userId, OnboardingProfileUpsertRequest request) {
+
         UserAccount userAccount = userAccountRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User account not found"));
 
-        ParentProfile parent = parentProfileRepository.findByUserAccountId(userId)
-                .orElseGet(() -> {
-                    ParentProfile created = new ParentProfile();
-                    created.setUserAccount(userAccount);
-                    return created;
-                });
-
         UserProfile profile = userProfileRepository.findByUserAccountId(userId)
                 .orElseGet(() -> {
-                    UserProfile created = new UserProfile();
-                    created.setUserAccount(userAccount);
-                    return created;
+                    UserProfile newProfile = new UserProfile();
+                    newProfile.setUserAccount(userAccount);
+                    return userProfileRepository.save(newProfile);
+                });
+
+        ParentProfile parent = parentProfileRepository.findByUserAccountId(userId)
+                .orElseGet(() -> {
+                    ParentProfile newParent = new ParentProfile();
+                    newParent.setUserAccount(userAccount);
+                    return parentProfileRepository.save(newParent);
+                });
+
+        UserPreferences preferences = userPreferencesRepository.findByUserProfileId(profile.getId())
+                .orElseGet(() -> {
+                    UserPreferences newPreferences = new UserPreferences();
+                    newPreferences.setUserProfile(profile);
+                    return userPreferencesRepository.save(newPreferences);
                 });
 
         if (request.getParent() != null) {
             updateParent(parent, request.getParent());
+            parentProfileRepository.save(parent);
         }
 
         if (request.getProfile() != null) {
             updateProfile(profile, request.getProfile());
+            userProfileRepository.save(profile);
         }
-
-        parentProfileRepository.save(parent);
-        UserProfile savedProfile = userProfileRepository.save(profile);
-
-        UserPreferences preferences = userPreferencesRepository.findByUserProfileId(savedProfile.getId())
-                .orElseGet(() -> {
-                    UserPreferences created = new UserPreferences();
-                    created.setUserProfile(savedProfile);
-                    return created;
-                });
 
         if (request.getPreferences() != null) {
             updatePreferences(preferences, request.getPreferences());
+            userPreferencesRepository.save(preferences);
         }
 
-        userPreferencesRepository.save(preferences);
-
         ProfileCompletionResponse completion =
-                profileCompletionService.recalculateAndApply(userAccount, savedProfile, parent);
+                profileCompletionService.recalculateAndApply(userAccount, profile, parent);
 
         milestoneService.evaluateMilestones(userId);
-
-        userProfileRepository.save(savedProfile);
     }
-
     public OnboardingProfileResponse getCompletion() {
         UUID userId = AuthUser.getCurrentUserId();
 
