@@ -23,4 +23,5 @@ public interface CrmFollowUpRepository extends JpaRepository<CrmFollowUp, UUID> 
             CrmFollowUpStatus status,
             Instant before
     );
+    List<CrmFollowUp> findByCrmCaseIdOrderByScheduledAtDesc(UUID crmCaseId);
 }

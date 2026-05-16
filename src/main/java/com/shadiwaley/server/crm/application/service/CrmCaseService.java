@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -41,6 +42,7 @@ public class CrmCaseService {
     private final ParentProfileRepository parentProfileRepository;
     private final EmployeeAccountRepository employeeAccountRepository;
     private final AuditLogService auditLogService;
+    private final CrmCaseTimelineRepository crmCaseTimelineRepository;
 
     @Transactional
     public CrmCaseResponse createCase(CreateCrmCaseRequest request) {
@@ -70,6 +72,14 @@ public class CrmCaseService {
         crmCase.setCreatedByEmployee(creator);
 
         CrmCase saved = crmCaseRepository.save(crmCase);
+        addTimeline(
+                saved,
+                CrmTimelineEventType.CASE_CREATED,
+                "Case created",
+                "CRM case was created.",
+                null,
+                saved.getStatus().name()
+        );
 
         auditLogService.record(
                 AuditAction.CRM_CASE_CREATED,
@@ -131,12 +141,24 @@ public class CrmCaseService {
     @Transactional
     public CrmCaseResponse assign(UUID caseId, AssignCrmCaseRequest request) {
         CrmCase crmCase = getCase(caseId);
+        String oldAssignee = crmCase.getAssignedEmployee() != null
+                ? crmCase.getAssignedEmployee().getFullName()
+                : null;
 
         EmployeeAccount employee = employeeAccountRepository.findById(request.getEmployeeId())
                 .orElseThrow(() -> new EntityNotFoundException("Employee not found"));
 
         crmCase.setAssignedEmployee(employee);
         crmCase.setStatus(CrmCaseStatus.IN_PROGRESS);
+
+        addTimeline(
+                crmCase,
+                CrmTimelineEventType.CRM_ASSIGNED,
+                "CRM assigned",
+                "Case assigned to " + employee.getFullName(),
+                oldAssignee,
+                employee.getFullName()
+        );
 
         addSystemNote(crmCase, "Case assigned to " + employee.getFullName());
         auditLogService.record(
@@ -152,9 +174,22 @@ public class CrmCaseService {
     @Transactional
     public CrmCaseResponse updateStatus(UUID caseId, UpdateCrmCaseStatusRequest request) {
         CrmCase crmCase = getCase(caseId);
+        String oldStatus = crmCase.getStatus() != null ? crmCase.getStatus().name() : null;
 
         crmCase.setStatus(request.getStatus());
         crmCase.setLastOutcome(request.getOutcome());
+
+        addTimeline(
+                crmCase,
+                request.getStatus() == CrmCaseStatus.CLOSED || request.getStatus() == CrmCaseStatus.RESOLVED
+                        ? CrmTimelineEventType.CASE_CLOSED
+                        : CrmTimelineEventType.CASE_UPDATED,
+                "Status changed",
+                "Status changed to " + request.getStatus(),
+                oldStatus,
+                request.getStatus().name()
+        );
+
 
         auditLogService.record(
                 AuditAction.CRM_CASE_STATUS_CHANGED,
@@ -187,6 +222,14 @@ public class CrmCaseService {
         note.setNote(request.getNote());
 
         CrmCaseNote saved = crmCaseNoteRepository.save(note);
+        addTimeline(
+                crmCase,
+                CrmTimelineEventType.NOTE_ADDED,
+                "Note added",
+                request.getNote(),
+                null,
+                null
+        );
 
         auditLogService.record(
                 AuditAction.CRM_NOTE_ADDED,
@@ -213,6 +256,15 @@ public class CrmCaseService {
         crmCaseRepository.save(crmCase);
 
         CrmFollowUp saved = crmFollowUpRepository.save(followUp);
+
+        addTimeline(
+                crmCase,
+                CrmTimelineEventType.FOLLOW_UP_SCHEDULED,
+                "Follow-up scheduled",
+                request.getPurpose(),
+                null,
+                request.getScheduledAt().toString()
+        );
 
         auditLogService.record(
                 AuditAction.CRM_FOLLOW_UP_CREATED,
@@ -299,6 +351,11 @@ public class CrmCaseService {
                 .phone(user.getPhone())
                 .side(user.getSide())
                 .candidateName(profile.getCandidateFirstName())
+                .parentName(parent != null ? parent.getParentName() : null)
+                .parentPhone(parent != null ? parent.getParentPhone() : null)
+                .parentRelation(parent != null && parent.getParentRelation() != null
+                        ? parent.getParentRelation().name()
+                        : null)
                 .district(parent != null ? parent.getDistrict() : null)
                 .state(parent != null ? parent.getState() : null)
                 .maslak(parent != null ? parent.getMaslak() : null)
@@ -314,6 +371,7 @@ public class CrmCaseService {
                 .lastOutcome(crmCase.getLastOutcome())
                 .nextFollowUpAt(crmCase.getNextFollowUpAt())
                 .closedAt(crmCase.getClosedAt())
+                .stage(crmCase.getStage())
                 .createdAt(crmCase.getCreatedAt())
                 .updatedAt(crmCase.getUpdatedAt())
                 .build();
@@ -347,4 +405,197 @@ public class CrmCaseService {
                 .outcome(followUp.getOutcome())
                 .build();
     }
+
+    @Transactional
+    public CrmCaseResponse updateStage(UUID caseId, UpdateCrmStageRequest request) {
+        CrmCase crmCase = getCase(caseId);
+
+        CrmCaseStage oldStageEnum = crmCase.getStage();
+        CrmCaseStatus oldStatusEnum = crmCase.getStatus();
+
+        String oldStage = oldStageEnum != null ? oldStageEnum.name() : null;
+        String oldStatus = oldStatusEnum != null ? oldStatusEnum.name() : null;
+
+        boolean wasClosed = isClosedStage(oldStageEnum);
+        boolean nowClosed = isClosedStage(request.getStage());
+
+        crmCase.setStage(request.getStage());
+
+        if (nowClosed) {
+            crmCase.setStatus(CrmCaseStatus.CLOSED);
+
+            if (crmCase.getClosedAt() == null) {
+                crmCase.setClosedAt(Instant.now());
+            }
+
+            addTimeline(
+                    crmCase,
+                    CrmTimelineEventType.CASE_CLOSED,
+                    "Case closed",
+                    request.getNote() != null && !request.getNote().isBlank()
+                            ? request.getNote()
+                            : "Case moved to closed stage " + request.getStage(),
+                    oldStatus,
+                    CrmCaseStatus.CLOSED.name()
+            );
+        } else if (wasClosed && isActiveStage(request.getStage())) {
+            crmCase.setStatus(CrmCaseStatus.IN_PROGRESS);
+            crmCase.setClosedAt(null);
+
+            addTimeline(
+                    crmCase,
+                    CrmTimelineEventType.CASE_REOPENED,
+                    "Case reopened",
+                    request.getNote() != null && !request.getNote().isBlank()
+                            ? request.getNote()
+                            : "Case reopened from closed stage",
+                    oldStatus,
+                    CrmCaseStatus.IN_PROGRESS.name()
+            );
+        } else {
+            if (crmCase.getStatus() == CrmCaseStatus.OPEN || crmCase.getStatus() == null) {
+                crmCase.setStatus(CrmCaseStatus.IN_PROGRESS);
+            }
+        }
+
+        if (request.getStage() == CrmCaseStage.CONTACTED) {
+            crmCase.setLastContactAt(Instant.now());
+        }
+
+        addTimeline(
+                crmCase,
+                CrmTimelineEventType.STAGE_CHANGED,
+                "Stage changed",
+                "Stage changed to " + request.getStage(),
+                oldStage,
+                request.getStage().name()
+        );
+
+        if (request.getNote() != null && !request.getNote().isBlank()) {
+            addSystemNote(crmCase, "Stage changed to " + request.getStage() + ". Note: " + request.getNote());
+        } else {
+            addSystemNote(crmCase, "Stage changed to " + request.getStage());
+        }
+
+        auditLogService.record(
+                AuditAction.CRM_CASE_STATUS_CHANGED,
+                AuditEntityType.CRM_CASE,
+                crmCase.getId(),
+                "CRM case stage changed to " + request.getStage()
+        );
+
+        return toResponse(crmCaseRepository.save(crmCase));
+    }
+
+
+    @Transactional
+    public CrmFollowUpResponse completeFollowUp(
+            UUID caseId,
+            UUID followUpId,
+            CompleteFollowUpRequest request
+    ) {
+        CrmCase crmCase = getCase(caseId);
+
+        CrmFollowUp followUp = crmFollowUpRepository.findById(followUpId)
+                .orElseThrow(() -> new EntityNotFoundException("Follow-up not found"));
+
+        if (!followUp.getCrmCase().getId().equals(caseId)) {
+            throw new IllegalArgumentException("Follow-up does not belong to this case");
+        }
+
+        followUp.setCompletedAt(Instant.now());
+        followUp.setStatus(CrmFollowUpStatus.COMPLETED);
+        followUp.setOutcome(request.getNote());
+
+        crmCase.setLastContactAt(Instant.now());
+        crmCase.setLastOutcome(request.getNote());
+
+        if (request.getNote() != null && !request.getNote().isBlank()) {
+            addSystemNote(crmCase, "Follow-up completed. Outcome: " + request.getNote());
+        } else {
+            addSystemNote(crmCase, "Follow-up completed");
+        }
+
+        crmCaseRepository.save(crmCase);
+
+        addTimeline(
+                crmCase,
+                CrmTimelineEventType.FOLLOW_UP_COMPLETED,
+                "Follow-up completed",
+                request.getNote(),
+                null,
+                followUp.getCompletedAt().toString()
+        );
+
+        return toFollowUpResponse(crmFollowUpRepository.save(followUp));
+    }
+
+    @Transactional(readOnly = true)
+    public List<CrmTimelineResponse> getTimeline(UUID caseId) {
+        CrmCase crmCase = getCase(caseId);
+
+        return crmCaseTimelineRepository
+                .findByCrmCaseIdOrderByCreatedAtDesc(crmCase.getId())
+                .stream()
+                .map(this::toTimelineResponse)
+                .toList();
+    }
+
+    private void addTimeline(
+            CrmCase crmCase,
+            CrmTimelineEventType eventType,
+            String title,
+            String description,
+            String oldValue,
+            String newValue
+    ) {
+        EmployeeAccount actor = getCurrentEmployeeOrNull();
+
+        CrmCaseTimeline timeline = new CrmCaseTimeline();
+        timeline.setCrmCase(crmCase);
+        timeline.setEventType(eventType);
+        timeline.setTitle(title);
+        timeline.setDescription(description);
+        timeline.setActorEmployee(actor);
+        timeline.setActorName(actor != null ? actor.getFullName() : "System");
+        timeline.setOldValue(oldValue);
+        timeline.setNewValue(newValue);
+
+        crmCaseTimelineRepository.save(timeline);
+    }
+
+    private CrmTimelineResponse toTimelineResponse(CrmCaseTimeline timeline) {
+        EmployeeAccount actor = timeline.getActorEmployee();
+
+        return CrmTimelineResponse.builder()
+                .eventId(timeline.getId())
+                .eventType(timeline.getEventType())
+                .title(timeline.getTitle())
+                .description(timeline.getDescription())
+                .actorEmployeeId(actor != null ? actor.getId() : null)
+                .actorName(timeline.getActorName())
+                .oldValue(timeline.getOldValue())
+                .newValue(timeline.getNewValue())
+                .metadata(timeline.getMetadata())
+                .createdAt(timeline.getCreatedAt())
+                .build();
+    }
+
+    private boolean isClosedStage(CrmCaseStage stage) {
+        return stage == CrmCaseStage.CLOSED_SUCCESS
+                || stage == CrmCaseStage.CLOSED_NOT_INTERESTED
+                || stage == CrmCaseStage.CLOSED_UNREACHABLE;
+    }
+
+    private boolean isActiveStage(CrmCaseStage stage) {
+        return stage == CrmCaseStage.NEW
+                || stage == CrmCaseStage.CONTACT_PENDING
+                || stage == CrmCaseStage.CONTACTED
+                || stage == CrmCaseStage.PROFILE_DISCUSSION
+                || stage == CrmCaseStage.MATCH_SUGGESTED
+                || stage == CrmCaseStage.FAMILY_INTERESTED
+                || stage == CrmCaseStage.FOLLOW_UP;
+    }
+
+
 }
