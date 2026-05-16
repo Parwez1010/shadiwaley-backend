@@ -1,6 +1,7 @@
 package com.shadiwaley.server.crm.infrastructure.entity;
 
 import com.shadiwaley.server.crm.domain.CrmCasePriority;
+import com.shadiwaley.server.crm.domain.CrmCaseStage;
 import com.shadiwaley.server.crm.domain.CrmCaseStatus;
 import com.shadiwaley.server.crm.domain.CrmCaseType;
 import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
@@ -65,6 +66,13 @@ public class CrmCase {
     @JoinColumn(name = "created_by_employee_id")
     private EmployeeAccount createdByEmployee;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "stage", nullable = false, length = 60)
+    private CrmCaseStage stage;
+
+    @Column(name = "last_contact_at")
+    private Instant lastContactAt;
+
     @Column(name = "created_at")
     private Instant createdAt;
 
@@ -78,6 +86,7 @@ public class CrmCase {
         if (id == null) id = UUID.randomUUID();
         if (status == null) status = CrmCaseStatus.OPEN;
         if (priority == null) priority = CrmCasePriority.MEDIUM;
+        if (stage == null) stage = CrmCaseStage.CONTACT_PENDING;
 
         createdAt = now;
         updatedAt = now;

@@ -8,5 +8,6 @@ import java.util.UUID;
 
 public interface ParentProfileRepository extends JpaRepository<ParentProfile, UUID> {
     Optional<ParentProfile> findByUserAccountId(UUID userAccountId);
+    Optional<ParentProfile> findTopByUserAccountIdOrderByCreatedAtDesc(UUID userAccountId);
 
 }
