@@ -46,14 +46,17 @@ public class EmployeeService {
             throw new IllegalArgumentException("Super admin cannot be created from this API");
         }
 
-        String temporaryPassword = generateTemporaryPassword();
 
         EmployeeAccount employee = new EmployeeAccount();
         employee.setFullName(request.getFullName());
         employee.setEmail(request.getEmail().toLowerCase().trim());
         employee.setPhone(request.getPhone());
-        employee.setPasswordHash(passwordEncoder.encode(temporaryPassword));
-        employee.setMustChangePassword(true);
+        employee.setPasswordHash(
+                passwordEncoder.encode(request.getPassword())
+        );
+
+        employee.setMustChangePassword(false);
+        employee.setPasswordChangedAt(Instant.now());
         employee.setRole(request.getRole());
         employee.setStatus(EmployeeStatus.ACTIVE);
         employee.setAssignedDistrict(request.getAssignedDistrict());
@@ -83,7 +86,6 @@ public class EmployeeService {
                 .fullName(saved.getFullName())
                 .email(saved.getEmail())
                 .role(saved.getRole())
-                .temporaryPassword(temporaryPassword)
                 .mustChangePassword(true)
                 .build();
     }

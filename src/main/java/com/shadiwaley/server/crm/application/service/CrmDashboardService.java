@@ -3,16 +3,24 @@ package com.shadiwaley.server.crm.application.service;
 import com.shadiwaley.server.crm.domain.CrmCasePriority;
 import com.shadiwaley.server.crm.domain.CrmCaseStage;
 import com.shadiwaley.server.crm.domain.CrmCaseStatus;
+import com.shadiwaley.server.crm.domain.CrmFollowUpStatus;
 import com.shadiwaley.server.crm.dto.response.*;
 import com.shadiwaley.server.crm.infrastructure.entity.CrmCase;
 import com.shadiwaley.server.crm.infrastructure.entity.CrmCaseTimeline;
+import com.shadiwaley.server.crm.infrastructure.entity.CrmFollowUp;
 import com.shadiwaley.server.crm.infrastructure.repository.CrmCaseRepository;
 import com.shadiwaley.server.crm.infrastructure.repository.CrmCaseTimelineRepository;
+import com.shadiwaley.server.crm.infrastructure.repository.CrmFollowUpRepository;
+import com.shadiwaley.server.employee.domain.EmployeeRole;
+import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
 import com.shadiwaley.server.employee.infrastructure.repository.EmployeeAccountRepository;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
+import com.shadiwaley.server.security.AuthUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +28,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -30,9 +40,15 @@ public class CrmDashboardService {
     private final ParentProfileRepository parentProfileRepository;
     private final UserProfileRepository userProfileRepository;
     private final EmployeeAccountRepository employeeAccountRepository;
+    private final CrmFollowUpRepository crmFollowUpRepository;
 
     @Transactional(readOnly = true)
     public CrmDashboardResponse getDashboard() {
+
+        EmployeeAccount currentEmployee = getCurrentEmployeeOrNull();
+
+        boolean isCrmAgent = currentEmployee != null
+                && currentEmployee.getRole() == EmployeeRole.CRM_AGENT;
 
         Instant now = Instant.now();
 
@@ -50,31 +66,29 @@ public class CrmDashboardService {
                 .atStartOfDay(ZoneId.systemDefault())
                 .toInstant();
 
-        return CrmDashboardResponse.builder()
+        UUID employeeId = isCrmAgent ? currentEmployee.getId() : null;
 
-                .summary(buildSummary(now, startOfDay, endOfDay, monthStart))
+        return CrmDashboardResponse.builder()
+                .summary(buildSummary(now, startOfDay, endOfDay, monthStart, employeeId))
 
                 .todayFollowUps(
-                        crmCaseRepository
-                                .findTop10ByNextFollowUpAtBetweenOrderByNextFollowUpAtAsc(
-                                        startOfDay,
-                                        endOfDay
-                                )
+                        getTodayFollowUps(startOfDay, endOfDay, employeeId)
                                 .stream()
                                 .map(this::toFollowUpResponse)
                                 .toList()
                 )
 
                 .overdueFollowUps(
-                        crmCaseRepository
-                                .findTop10ByNextFollowUpAtBeforeOrderByNextFollowUpAtAsc(now)
+                        getOverdueFollowUps(now, employeeId)
                                 .stream()
                                 .map(this::toFollowUpResponse)
                                 .toList()
                 )
 
                 .unassignedCases(
-                        crmCaseRepository
+                        isCrmAgent
+                                ? List.of()
+                                : crmCaseRepository
                                 .findTop10ByAssignedEmployeeIsNullOrderByCreatedAtDesc()
                                 .stream()
                                 .map(this::toUnassignedResponse)
@@ -82,14 +96,15 @@ public class CrmDashboardService {
                 )
 
                 .recentActivity(
-                        crmCaseTimelineRepository
-                                .findTop20ByOrderByCreatedAtDesc()
+                        getRecentActivity(employeeId)
                                 .stream()
                                 .map(this::toTimelineResponse)
                                 .toList()
                 )
 
-                .employeeWorkload(buildEmployeeWorkload(monthStart))
+                .employeeWorkload(
+                        isCrmAgent ? List.of() : buildEmployeeWorkload(monthStart)
+                )
 
                 .build();
     }
@@ -98,55 +113,59 @@ public class CrmDashboardService {
             Instant now,
             Instant startOfDay,
             Instant endOfDay,
-            Instant monthStart
+            Instant monthStart,
+            UUID employeeId
     ) {
+        boolean assignedOnly = employeeId != null;
 
         return CrmDashboardSummaryResponse.builder()
 
                 .openCases(
-                        crmCaseRepository.countByStatus(CrmCaseStatus.OPEN)
+                        assignedOnly
+                                ? crmCaseRepository.countByAssignedEmployeeIdAndStatus(employeeId, CrmCaseStatus.OPEN)
+                                : crmCaseRepository.countByStatus(CrmCaseStatus.OPEN)
                 )
 
                 .inProgressCases(
-                        crmCaseRepository.countByStatus(CrmCaseStatus.IN_PROGRESS)
+                        assignedOnly
+                                ? crmCaseRepository.countByAssignedEmployeeIdAndStatus(employeeId, CrmCaseStatus.IN_PROGRESS)
+                                : crmCaseRepository.countByStatus(CrmCaseStatus.IN_PROGRESS)
                 )
 
                 .waitingCases(
-                        crmCaseRepository.countByStage(CrmCaseStage.FOLLOW_UP)
+                        assignedOnly
+                                ? crmCaseRepository.countByAssignedEmployeeIdAndStage(employeeId, CrmCaseStage.FOLLOW_UP)
+                                : crmCaseRepository.countByStage(CrmCaseStage.FOLLOW_UP)
                 )
 
                 .urgentCases(
-                        crmCaseRepository.countByPriority(CrmCasePriority.URGENT)
+                        assignedOnly
+                                ? crmCaseRepository.countByAssignedEmployeeIdAndPriority(employeeId, CrmCasePriority.URGENT)
+                                : crmCaseRepository.countByPriority(CrmCasePriority.URGENT)
                 )
 
                 .highPriorityCases(
-                        crmCaseRepository.countByPriority(CrmCasePriority.HIGH)
+                        assignedOnly
+                                ? crmCaseRepository.countByAssignedEmployeeIdAndPriority(employeeId, CrmCasePriority.HIGH)
+                                : crmCaseRepository.countByPriority(CrmCasePriority.HIGH)
                 )
 
                 .closedThisMonth(
-                        crmCaseRepository.countByClosedAtBetween(
-                                monthStart,
-                                now
-                        )
+                        assignedOnly
+                                ? crmCaseRepository.countByAssignedEmployeeIdAndClosedAtBetween(employeeId, monthStart, now)
+                                : crmCaseRepository.countByClosedAtBetween(monthStart, now)
                 )
 
                 .unassignedCases(
-                        crmCaseRepository.countByAssignedEmployeeIsNull()
+                        assignedOnly ? 0 : crmCaseRepository.countByAssignedEmployeeIsNull()
                 )
 
                 .followUpsDueToday(
-                        crmCaseRepository
-                                .findTop10ByNextFollowUpAtBetweenOrderByNextFollowUpAtAsc(
-                                        startOfDay,
-                                        endOfDay
-                                )
-                                .size()
+                        getTodayFollowUps(startOfDay, endOfDay, employeeId).size()
                 )
 
                 .overdueFollowUps(
-                        crmCaseRepository
-                                .findTop10ByNextFollowUpAtBeforeOrderByNextFollowUpAtAsc(now)
-                                .size()
+                        getOverdueFollowUps(now, employeeId).size()
                 )
 
                 .pendingVerification(0)
@@ -154,7 +173,9 @@ public class CrmDashboardService {
                 .build();
     }
 
-    private CrmDashboardFollowUpResponse toFollowUpResponse(CrmCase crmCase) {
+    private CrmDashboardFollowUpResponse toFollowUpResponse(CrmFollowUp followUp) {
+
+        CrmCase crmCase = followUp.getCrmCase();
 
         ParentProfile parent = parentProfileRepository
                 .findTopByUserAccountIdOrderByCreatedAtDesc(
@@ -162,7 +183,10 @@ public class CrmDashboardService {
                 )
                 .orElse(null);
 
+        EmployeeAccount assignedEmployee = crmCase.getAssignedEmployee();
+
         return CrmDashboardFollowUpResponse.builder()
+                .followUpId(followUp.getId())
                 .caseId(crmCase.getId())
                 .candidateName(
                         crmCase.getUserProfile() != null
@@ -170,15 +194,16 @@ public class CrmDashboardService {
                                 : null
                 )
                 .parentName(parent != null ? parent.getParentName() : null)
-                .phone(parent != null ? parent.getParentPhone() : null)
+                .phone(parent != null ? parent.getParentPhone() : crmCase.getUserAccount().getPhone())
                 .assignedEmployeeName(
-                        crmCase.getAssignedEmployee() != null
-                                ? crmCase.getAssignedEmployee().getFullName()
-                                : null
+                        assignedEmployee != null ? assignedEmployee.getFullName() : null
                 )
                 .priority(crmCase.getPriority())
                 .stage(crmCase.getStage())
-                .nextFollowUpAt(crmCase.getNextFollowUpAt())
+                .nextFollowUpAt(followUp.getScheduledAt())
+                .channel(followUp.getChannel() != null ? followUp.getChannel().name() : null)
+                .purpose(followUp.getPurpose())
+                .completed(followUp.getCompletedAt() != null)
                 .build();
     }
 
@@ -279,6 +304,96 @@ public class CrmDashboardService {
                 })
                 .toList();
     }
+
+    private List<CrmFollowUp> getTodayFollowUps(
+            Instant startOfDay,
+            Instant endOfDay,
+            UUID employeeId
+    ) {
+        if (employeeId != null) {
+            return crmFollowUpRepository
+                    .findTop10ByAssignedEmployeeIdAndStatusAndScheduledAtBetweenOrderByScheduledAtAsc(
+                            employeeId,
+                            CrmFollowUpStatus.SCHEDULED,
+                            startOfDay,
+                            endOfDay
+                    );
+        }
+
+        return crmFollowUpRepository
+                .findTop10ByStatusAndScheduledAtBetweenOrderByScheduledAtAsc(
+                        CrmFollowUpStatus.SCHEDULED,
+                        startOfDay,
+                        endOfDay
+                );
+    }
+
+    private List<CrmFollowUp> getOverdueFollowUps(
+            Instant now,
+            UUID employeeId
+    ) {
+        if (employeeId != null) {
+            return crmFollowUpRepository
+                    .findTop10ByAssignedEmployeeIdAndStatusAndScheduledAtBeforeOrderByScheduledAtAsc(
+                            employeeId,
+                            CrmFollowUpStatus.SCHEDULED,
+                            now
+                    );
+        }
+
+        return crmFollowUpRepository
+                .findTop10ByStatusAndScheduledAtBeforeOrderByScheduledAtAsc(
+                        CrmFollowUpStatus.SCHEDULED,
+                        now
+                );
+    }
+
+    private List<CrmCaseTimeline> getRecentActivity(UUID employeeId) {
+        if (employeeId != null) {
+            return crmCaseTimelineRepository
+                    .findTop20ByCrmCaseAssignedEmployeeIdOrderByCreatedAtDesc(employeeId);
+        }
+
+        return crmCaseTimelineRepository.findTop20ByOrderByCreatedAtDesc();
+    }
+
+    private EmployeeAccount getCurrentEmployeeOrNull() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null) {
+            return null;
+        }
+
+        String principal = authentication.getName();
+
+        try {
+            UUID actorId = AuthUser.getCurrentActorId();
+            Optional<EmployeeAccount> byId = employeeAccountRepository.findById(actorId);
+            if (byId.isPresent()) {
+                return byId.get();
+            }
+        } catch (Exception ignored) {
+        }
+
+        try {
+            UUID principalId = UUID.fromString(principal);
+            Optional<EmployeeAccount> byPrincipalId = employeeAccountRepository.findById(principalId);
+            if (byPrincipalId.isPresent()) {
+                return byPrincipalId.get();
+            }
+        } catch (Exception ignored) {
+        }
+
+        if (principal != null && principal.contains("@")) {
+            return employeeAccountRepository
+                    .findByEmailIgnoreCase(principal.trim().toLowerCase())
+                    .orElse(null);
+        }
+
+        return null;
+    }
+
+
 
 
 }

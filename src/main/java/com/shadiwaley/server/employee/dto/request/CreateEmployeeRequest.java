@@ -23,6 +23,10 @@ public class CreateEmployeeRequest {
     @Pattern(regexp = "^[6-9]\\d{9}$", message = "Phone must be a valid 10-digit Indian mobile number")
     private String phone;
 
+    @NotBlank
+    @Size(min = 8, max = 100)
+    private String password;
+
     @NotNull(message = "Role is required")
     private EmployeeRole role;
 

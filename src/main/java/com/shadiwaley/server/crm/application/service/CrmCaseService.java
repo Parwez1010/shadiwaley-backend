@@ -25,9 +25,11 @@ import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -89,7 +91,6 @@ public class CrmCaseService {
         );
 
         return toResponse(saved);    }
-
     @Transactional(readOnly = true)
     public CrmCasePageResponse getCases(
             int page,
@@ -99,6 +100,22 @@ public class CrmCaseService {
             UUID assignedEmployeeId,
             String search
     ) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        boolean isCrmAgent = authentication != null
+                && authentication.getAuthorities()
+                .stream()
+                .anyMatch(a -> "ROLE_CRM_AGENT".equals(a.getAuthority()));
+
+        if (isCrmAgent) {
+            EmployeeAccount employee = getCurrentEmployeeOrNull();
+
+            if (employee == null) {
+                throw new EntityNotFoundException("Logged-in CRM employee not found");
+            }
+
+            assignedEmployeeId = employee.getId();
+        }
         Pageable pageable = PageRequest.of(
                 Math.max(page, 0),
                 Math.min(Math.max(size, 1), 50),
@@ -119,7 +136,6 @@ public class CrmCaseService {
                 .last(result.isLast())
                 .build();
     }
-
     @Transactional(readOnly = true)
     public CrmCaseDetailResponse getCaseDetail(UUID caseId) {
         CrmCase crmCase = getCase(caseId);
@@ -328,13 +344,43 @@ public class CrmCaseService {
         return crmCaseRepository.findById(caseId)
                 .orElseThrow(() -> new EntityNotFoundException("CRM case not found"));
     }
-
     private EmployeeAccount getCurrentEmployeeOrNull() {
-        try {
-            return employeeAccountRepository.findById(AuthUser.getCurrentActorId()).orElse(null);
-        } catch (Exception ex) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null) {
             return null;
         }
+
+        String principal = authentication.getName();
+
+        // 1. Try AuthUser actorId
+        try {
+            UUID actorId = AuthUser.getCurrentActorId();
+            Optional<EmployeeAccount> byId = employeeAccountRepository.findById(actorId);
+            if (byId.isPresent()) {
+                return byId.get();
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 2. Try authentication name as UUID
+        try {
+            UUID principalId = UUID.fromString(principal);
+            Optional<EmployeeAccount> byPrincipalId = employeeAccountRepository.findById(principalId);
+            if (byPrincipalId.isPresent()) {
+                return byPrincipalId.get();
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 3. Try authentication name as email
+        if (principal != null && principal.contains("@")) {
+            return employeeAccountRepository
+                    .findByEmailIgnoreCase(principal.trim().toLowerCase())
+                    .orElse(null);
+        }
+
+        return null;
     }
 
     private CrmCaseResponse toResponse(CrmCase crmCase) {
