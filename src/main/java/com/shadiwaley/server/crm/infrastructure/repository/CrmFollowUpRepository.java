@@ -24,4 +24,28 @@ public interface CrmFollowUpRepository extends JpaRepository<CrmFollowUp, UUID> 
             Instant before
     );
     List<CrmFollowUp> findByCrmCaseIdOrderByScheduledAtDesc(UUID crmCaseId);
+
+    List<CrmFollowUp> findTop10ByStatusAndScheduledAtBetweenOrderByScheduledAtAsc(
+            CrmFollowUpStatus status,
+            Instant start,
+            Instant end
+    );
+
+    List<CrmFollowUp> findTop10ByStatusAndScheduledAtBeforeOrderByScheduledAtAsc(
+            CrmFollowUpStatus status,
+            Instant now
+    );
+
+    List<CrmFollowUp> findTop10ByAssignedEmployeeIdAndStatusAndScheduledAtBetweenOrderByScheduledAtAsc(
+            UUID employeeId,
+            CrmFollowUpStatus status,
+            Instant start,
+            Instant end
+    );
+
+    List<CrmFollowUp> findTop10ByAssignedEmployeeIdAndStatusAndScheduledAtBeforeOrderByScheduledAtAsc(
+            UUID employeeId,
+            CrmFollowUpStatus status,
+            Instant now
+    );
 }

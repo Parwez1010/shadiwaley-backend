@@ -50,4 +50,19 @@ public interface CrmCaseRepository extends JpaRepository<CrmCase, UUID>, JpaSpec
             Instant start,
             Instant end
     );
+
+    long countByAssignedEmployeeIdAndStage(UUID employeeId, CrmCaseStage stage);
+
+    long countByAssignedEmployeeIdAndPriority(UUID employeeId, CrmCasePriority priority);
+
+    List<CrmCase> findTop10ByAssignedEmployeeIdAndNextFollowUpAtBetweenOrderByNextFollowUpAtAsc(
+            UUID employeeId,
+            Instant start,
+            Instant end
+    );
+
+    List<CrmCase> findTop10ByAssignedEmployeeIdAndNextFollowUpAtBeforeOrderByNextFollowUpAtAsc(
+            UUID employeeId,
+            Instant instant
+    );
 }

@@ -36,11 +36,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -108,10 +111,7 @@ public class AdminDashboardService {
             com.shadiwaley.server.user.domain.UserSide side,
             String search
     ) {
-
-        EmployeeAccount currentEmployee = employeeAccountRepository
-                .findById(AuthUser.getCurrentActorId())
-                .orElse(null);
+        EmployeeAccount currentEmployee = getCurrentEmployeeOrNull();
 
         Pageable pageable = PageRequest.of(
                 Math.max(page, 0),
@@ -133,7 +133,6 @@ public class AdminDashboardService {
         return result.map(this::toFamilyListResponse);
     }
 
-
     private Specification<UserProfile> familySpecification(
             EmployeeAccount currentEmployee,
             String district,
@@ -141,8 +140,9 @@ public class AdminDashboardService {
             com.shadiwaley.server.user.domain.UserSide side,
             String search
     ) {
-
         return (root, query, cb) -> {
+
+            query.distinct(true);
 
             var predicate = cb.conjunction();
 
@@ -150,21 +150,14 @@ public class AdminDashboardService {
                     root.join("userAccount", JoinType.INNER);
 
             if (profileStatus != null) {
-                predicate = cb.and(
-                        predicate,
-                        cb.equal(root.get("profileStatus"), profileStatus)
-                );
+                predicate = cb.and(predicate, cb.equal(root.get("profileStatus"), profileStatus));
             }
 
             if (side != null) {
-                predicate = cb.and(
-                        predicate,
-                        cb.equal(accountJoin.get("side"), side)
-                );
+                predicate = cb.and(predicate, cb.equal(accountJoin.get("side"), side));
             }
 
             if (search != null && !search.isBlank()) {
-
                 String pattern = "%" + search.toLowerCase() + "%";
 
                 predicate = cb.and(
@@ -178,74 +171,39 @@ public class AdminDashboardService {
             }
 
             if (district != null && !district.isBlank()) {
-
-                Join<UserProfile, UserAccount> userJoin =
-                        root.join("userAccount", JoinType.INNER);
-
                 var parentSubquery = query.subquery(UUID.class);
-
-                var parentRoot = parentSubquery.from(
-                        com.shadiwaley.server.parent.infrastructure.entity.ParentProfile.class
-                );
+                var parentRoot = parentSubquery.from(ParentProfile.class);
 
                 parentSubquery.select(parentRoot.get("userAccount").get("id"));
-
                 parentSubquery.where(
                         cb.and(
-                                cb.equal(
-                                        parentRoot.get("userAccount").get("id"),
-                                        userJoin.get("id")
-                                ),
-                                cb.equal(
-                                        cb.lower(parentRoot.get("district")),
-                                        district.toLowerCase()
-                                )
+                                cb.equal(parentRoot.get("userAccount").get("id"), accountJoin.get("id")),
+                                cb.equal(cb.lower(parentRoot.get("district")), district.toLowerCase())
                         )
                 );
 
                 predicate = cb.and(predicate, cb.exists(parentSubquery));
             }
 
-            if (
-                    currentEmployee != null
-                            && currentEmployee.getRole() == EmployeeRole.CRM_AGENT
-                            && currentEmployee.getAssignedDistrict() != null
-                            && !currentEmployee.getAssignedDistrict().isBlank()
-            ) {
+            if (currentEmployee != null && currentEmployee.getRole() == EmployeeRole.CRM_AGENT) {
+                var crmCaseSubquery = query.subquery(UUID.class);
+                var crmCaseRoot = crmCaseSubquery.from(CrmCase.class);
 
-                String assignedDistrict =
-                        currentEmployee.getAssignedDistrict().toLowerCase();
-
-                Join<UserProfile, UserAccount> userJoin =
-                        root.join("userAccount", JoinType.INNER);
-
-                var parentSubquery = query.subquery(UUID.class);
-
-                var parentRoot = parentSubquery.from(
-                        com.shadiwaley.server.parent.infrastructure.entity.ParentProfile.class
-                );
-
-                parentSubquery.select(parentRoot.get("userAccount").get("id"));
-
-                parentSubquery.where(
+                crmCaseSubquery.select(crmCaseRoot.get("userAccount").get("id"));
+                crmCaseSubquery.where(
                         cb.and(
-                                cb.equal(
-                                        parentRoot.get("userAccount").get("id"),
-                                        userJoin.get("id")
-                                ),
-                                cb.equal(
-                                        cb.lower(parentRoot.get("district")),
-                                        assignedDistrict
-                                )
+                                cb.equal(crmCaseRoot.get("userAccount").get("id"), accountJoin.get("id")),
+                                cb.equal(crmCaseRoot.get("assignedEmployee").get("id"), currentEmployee.getId())
                         )
                 );
 
-                predicate = cb.and(predicate, cb.exists(parentSubquery));
+                predicate = cb.and(predicate, cb.exists(crmCaseSubquery));
             }
 
             return predicate;
         };
     }
+
 
     @Transactional(readOnly = true)
     public CrmFamilyDetailResponse getFamilyDetail(UUID userId) {
@@ -263,6 +221,8 @@ public class AdminDashboardService {
         CrmCase crmCase = crmCaseRepository
                 .findTopByUserAccountIdOrderByUpdatedAtDesc(account.getId())
                 .orElse(null);
+
+        assertCrmAgentCanAccessFamily(crmCase);
 
         EmployeeAccount assignedEmployee = crmCase != null
                 ? crmCase.getAssignedEmployee()
@@ -324,6 +284,27 @@ public class AdminDashboardService {
                 .lastLoginAt(account.getLastLoginAt())
                 .build();
     }
+
+    private EmployeeAccount getCurrentEmployee() {
+
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null) {
+            return null;
+        }
+
+        String email = authentication.getName();
+
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+
+        return employeeAccountRepository
+                .findByEmailIgnoreCase(email)
+                .orElse(null);
+    }
+
 
     private CrmFamilyListResponse toFamilyListResponse(UserProfile profile) {
         UserAccount account = profile.getUserAccount();
@@ -542,5 +523,64 @@ public class AdminDashboardService {
                 .purpose(followUp.getPurpose())
                 .scheduledAt(followUp.getScheduledAt())
                 .build();
+    }
+    private EmployeeAccount getCurrentEmployeeOrNull() {
+        var authentication =
+                org.springframework.security.core.context.SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        if (authentication == null) {
+            return null;
+        }
+
+        String principal = authentication.getName();
+
+        try {
+            UUID actorId = AuthUser.getCurrentActorId();
+            var byId = employeeAccountRepository.findById(actorId);
+            if (byId.isPresent()) {
+                return byId.get();
+            }
+        } catch (Exception ignored) {
+        }
+
+        try {
+            UUID principalId = UUID.fromString(principal);
+            var byPrincipalId = employeeAccountRepository.findById(principalId);
+            if (byPrincipalId.isPresent()) {
+                return byPrincipalId.get();
+            }
+        } catch (Exception ignored) {
+        }
+
+        if (principal != null && principal.contains("@")) {
+            return employeeAccountRepository
+                    .findByEmailIgnoreCase(principal.trim().toLowerCase())
+                    .orElse(null);
+        }
+
+        return null;
+    }
+
+
+    private void assertCrmAgentCanAccessFamily(CrmCase crmCase) {
+        EmployeeAccount currentEmployee = getCurrentEmployeeOrNull();
+
+        if (currentEmployee == null) {
+            return;
+        }
+
+        if (currentEmployee.getRole() != EmployeeRole.CRM_AGENT) {
+            return;
+        }
+
+        if (crmCase == null
+                || crmCase.getAssignedEmployee() == null
+                || !crmCase.getAssignedEmployee().getId().equals(currentEmployee.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can access only assigned families"
+            );
+        }
     }
 }

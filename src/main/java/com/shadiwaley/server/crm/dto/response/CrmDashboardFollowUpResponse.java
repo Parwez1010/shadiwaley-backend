@@ -27,4 +27,13 @@ public class CrmDashboardFollowUpResponse {
     private CrmCaseStage stage;
 
     private Instant nextFollowUpAt;
+
+    private UUID followUpId;
+
+    private String channel;
+
+    private String purpose;
+
+    private boolean completed;
+
 }
