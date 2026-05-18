@@ -1,0 +1,2 @@
+ALTER TABLE proposal
+ADD COLUMN IF NOT EXISTS source_type VARCHAR(50);

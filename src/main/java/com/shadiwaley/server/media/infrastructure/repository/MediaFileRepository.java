@@ -38,4 +38,10 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
 
     boolean existsByUserProfileIdAndMediaTypeAndDeletedFalse(UUID userProfileId, MediaType mediaType);
 
+    Optional<MediaFile> findTopByUserProfileIdAndMediaTypeAndPrimaryTrueAndDeletedFalseOrderByCreatedAtDesc(
+            UUID userProfileId,
+            MediaType mediaType
+    );
+
+
 }
