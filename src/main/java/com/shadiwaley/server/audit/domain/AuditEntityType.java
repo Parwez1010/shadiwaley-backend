@@ -11,5 +11,6 @@ public enum AuditEntityType {
     RISHTA_REQUEST,
     CHAT_ROOM,
     CHAT_MESSAGE,
-    SYSTEM
+    SYSTEM,
+    PROPOSAL
 }

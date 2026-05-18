@@ -8,6 +8,7 @@ import com.shadiwaley.server.crm.dto.request.*;
 import com.shadiwaley.server.crm.dto.response.*;
 import com.shadiwaley.server.crm.infrastructure.entity.*;
 import com.shadiwaley.server.crm.infrastructure.repository.*;
+import com.shadiwaley.server.employee.domain.EmployeeRole;
 import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
 import com.shadiwaley.server.employee.infrastructure.repository.EmployeeAccountRepository;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
@@ -643,5 +644,67 @@ public class CrmCaseService {
                 || stage == CrmCaseStage.FOLLOW_UP;
     }
 
+    @Transactional
+    public CrmFollowUpResponse rescheduleFollowUp(
+            UUID caseId,
+            UUID followUpId,
+            RescheduleFollowUpRequest request
+    ) {
+        CrmCase crmCase = getCase(caseId);
+        assertCrmAgentCanAccessCase(crmCase);
 
-}
+        CrmFollowUp followUp = crmFollowUpRepository.findById(followUpId)
+                .orElseThrow(() -> new EntityNotFoundException("Follow-up not found"));
+
+        if (!followUp.getCrmCase().getId().equals(caseId)) {
+            throw new IllegalArgumentException("Follow-up does not belong to this case");
+        }
+
+        Instant oldScheduledAt = followUp.getScheduledAt();
+
+        followUp.setScheduledAt(request.getScheduledAt());
+        followUp.setChannel(request.getChannel());
+        followUp.setPurpose(request.getPurpose());
+        followUp.setStatus(CrmFollowUpStatus.SCHEDULED);
+        followUp.setCompletedAt(null);
+        followUp.setOutcome(null);
+
+        crmCase.setNextFollowUpAt(request.getScheduledAt());
+        crmCase.setStage(CrmCaseStage.FOLLOW_UP);
+
+        CrmFollowUp saved = crmFollowUpRepository.save(followUp);
+        crmCaseRepository.save(crmCase);
+
+        addTimeline(
+                crmCase,
+                CrmTimelineEventType.FOLLOW_UP_RESCHEDULED,
+                "Follow-up rescheduled",
+                request.getPurpose(),
+                oldScheduledAt != null ? oldScheduledAt.toString() : null,
+                request.getScheduledAt().toString()
+        );
+
+        if (request.getNote() != null && !request.getNote().isBlank()) {
+            addSystemNote(crmCase, "Follow-up rescheduled. Note: " + request.getNote());
+        }
+
+        return toFollowUpResponse(saved);
+    }
+    private void assertCrmAgentCanAccessCase(CrmCase crmCase) {
+        EmployeeAccount currentEmployee = getCurrentEmployeeOrNull();
+
+        if (currentEmployee == null) {
+            return;
+        }
+
+        if (currentEmployee.getRole() != EmployeeRole.CRM_AGENT) {
+            return;
+        }
+
+        if (crmCase.getAssignedEmployee() == null
+                || !crmCase.getAssignedEmployee().getId().equals(currentEmployee.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can access only assigned CRM cases"
+            );
+        }
+    }}

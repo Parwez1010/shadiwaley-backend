@@ -162,4 +162,18 @@ public class CrmCaseController {
                 crmDashboardService.getDashboard()
         );
     }
+
+    @PatchMapping("/{caseId}/follow-ups/{followUpId}/reschedule")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'CRM_AGENT')")
+    public ApiResponse<CrmFollowUpResponse> rescheduleFollowUp(
+            @PathVariable UUID caseId,
+            @PathVariable UUID followUpId,
+            @Valid @RequestBody RescheduleFollowUpRequest request
+    ) {
+        return ResponseFactory.success(
+                "Follow-up rescheduled successfully",
+                crmCaseService.rescheduleFollowUp(caseId, followUpId, request)
+        );
+    }
+
 }
