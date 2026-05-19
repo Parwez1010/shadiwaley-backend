@@ -17,7 +17,12 @@ public class CorsConfig {
         config.setAllowedOrigins(List.of(
                 "http://localhost:4200",
                 "http://localhost:3000",
-                "http://localhost:8080"
+                "http://localhost:8080",
+                "https://shadiwaley-admin-app.vercel.app",
+                "https://shadiwaley.com",
+                "https://admin.shadiwaley.com",
+                "https://shadiwaley-admin-ge0t1e9dh-parwez1010s-projects.vercel.app"
+
         ));
 
         config.setAllowedMethods(List.of(

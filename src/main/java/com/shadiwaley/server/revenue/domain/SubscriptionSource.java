@@ -1,4 +1,8 @@
 package com.shadiwaley.server.revenue.domain;
 
-public class SubscriptionSource {
+public enum SubscriptionSource {
+    FAMILY_ONBOARDING,
+    FAMILY_DETAIL,
+    PAYMENT_PANEL,
+    ADMIN_MANUAL
 }

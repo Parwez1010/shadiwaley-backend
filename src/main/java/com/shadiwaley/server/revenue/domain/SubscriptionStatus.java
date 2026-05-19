@@ -1,4 +1,10 @@
 package com.shadiwaley.server.revenue.domain;
 
-public class SubscriptionStatus {
+public enum SubscriptionStatus {
+    FREE,
+    ACTIVE,
+    PENDING_PAYMENT,
+    EXPIRED,
+    CANCELLED,
+    REFUNDED
 }
