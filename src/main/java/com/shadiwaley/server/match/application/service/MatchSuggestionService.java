@@ -87,24 +87,23 @@ public class MatchSuggestionService {
                 "Match suggestions viewed"
         );
 
-
         boolean filtersApplied =
-                search != null
-                        || district != null
-                        || state != null
-                        || caste != null
-                        || maslak != null
+                !isBlank(search)
+                        || !isBlank(district)
+                        || !isBlank(state)
+                        || !isBlank(caste)
+                        || !isBlank(maslak)
                         || minAge != null
                         || maxAge != null
-                        || education != null
-                        || professionType != null
-                        || familyType != null
+                        || !isBlank(education)
+                        || !isBlank(professionType)
+                        || !isBlank(familyType)
                         || minIncome != null
                         || maxIncome != null
-                        || verifiedOnly != null
-                        || hasPhotoOnly != null
-                        || notPreviouslyProposed != null
-                        || readiness != null
+                        || Boolean.TRUE.equals(verifiedOnly)
+                        || Boolean.TRUE.equals(hasPhotoOnly)
+                        || Boolean.TRUE.equals(notPreviouslyProposed)
+                        || !isBlank(readiness)
                         || minScore != null
                         || maxScore != null;
 
@@ -116,7 +115,6 @@ public class MatchSuggestionService {
                     "Match filters applied"
             );
         }
-
 
         ParentProfile sourceParent = parentProfileRepository
                 .findByUserAccountId(source.getUserAccount().getId())
@@ -151,34 +149,59 @@ public class MatchSuggestionService {
                         sourceParent,
                         preferences
                 ))
-                .sorted(
-                        Comparator.comparing(
-                                MatchSuggestionResponse::getCompatibilityScore,
-                                Comparator.nullsLast(Integer::compareTo)
-                        ).reversed()
-                )
                 .toList();
 
         List<MatchSuggestionResponse> filtered = suggestions.stream()
-                .filter(m -> minScore == null || m.getCompatibilityScore() >= minScore)
-                .filter(m -> maxScore == null || m.getCompatibilityScore() <= maxScore)
-                .filter(m -> readiness == null || readiness.equalsIgnoreCase(m.getDispatchReadiness()))
+
+                .filter(m -> isBlank(search)
+                        || contains(m.getCandidateName(), search)
+                        || contains(m.getParentName(), search)
+                        || contains(m.getParentPhone(), search)
+                        || contains(m.getDistrict(), search)
+                        || contains(m.getCaste(), search)
+                        || contains(m.getMaslak(), search)
+                        || contains(m.getEducation(), search)
+                        || contains(m.getProfessionType(), search))
+
+                .filter(m -> isBlank(district) || equalsIgnoreCase(m.getDistrict(), district))
+                .filter(m -> isBlank(state) || equalsIgnoreCase(m.getState(), state))
+                .filter(m -> isBlank(caste) || equalsIgnoreCase(m.getCaste(), caste))
+                .filter(m -> isBlank(maslak) || equalsIgnoreCase(m.getMaslak(), maslak))
+                .filter(m -> isBlank(education) || equalsIgnoreCase(m.getEducation(), education))
+                .filter(m -> isBlank(professionType) || equalsIgnoreCase(m.getProfessionType(), professionType))
+                .filter(m -> isBlank(familyType) || equalsIgnoreCase(m.getFamilyType(), familyType))
+
+                .filter(m -> minAge == null || (m.getAge() != null && m.getAge() >= minAge))
+                .filter(m -> maxAge == null || (m.getAge() != null && m.getAge() <= maxAge))
+
+                .filter(m -> minIncome == null || (m.getMonthlyIncome() != null && m.getMonthlyIncome() >= minIncome))
+                .filter(m -> maxIncome == null || (m.getMonthlyIncome() != null && m.getMonthlyIncome() <= maxIncome))
+
+                .filter(m -> !Boolean.TRUE.equals(verifiedOnly) || m.isVerified())
                 .filter(m -> !Boolean.TRUE.equals(hasPhotoOnly) || m.isHasProfilePhoto())
                 .filter(m -> !Boolean.TRUE.equals(notPreviouslyProposed) || !m.isAlreadyProposed())
-                .toList();
 
+                .filter(m -> isBlank(readiness) || equalsIgnoreCase(m.getDispatchReadiness(), readiness))
+
+                .filter(m -> minScore == null || (m.getCompatibilityScore() != null && m.getCompatibilityScore() >= minScore))
+                .filter(m -> maxScore == null || (m.getCompatibilityScore() != null && m.getCompatibilityScore() <= maxScore))
+
+                .sorted(getMatchSortComparator(sort))
+                .toList();
 
         return MatchSuggestionPageResponse.builder()
                 .sourceProfile(toSourceProfileResponse(source, sourceParent, crmCase))
-                .matches(suggestions != null ? suggestions : List.of())
+                .matches(filtered != null ? filtered : List.of())
                 .filters(defaultFilters())
                 .page(candidatePage.getNumber())
                 .size(candidatePage.getSize())
-                .totalElements(candidatePage.getTotalElements())
-                .totalPages(candidatePage.getTotalPages())
-                .last(candidatePage.isLast())
+                .totalElements(filtered.size())
+                .totalPages(filtered.isEmpty() ? 0 : 1)
+                .last(true)
                 .build();
     }
+
+
 
     @Transactional(readOnly = true)
     public CompatibilityResponse compatibility(
@@ -449,5 +472,76 @@ public class MatchSuggestionService {
                 sourceParent,
                 preferences
         );
+    }
+
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isBlank();
+    }
+
+    private boolean equalsIgnoreCase(String a, String b) {
+        return a != null && b != null && a.trim().equalsIgnoreCase(b.trim());
+    }
+
+    private boolean contains(String value, String search) {
+        return value != null
+                && search != null
+                && value.toLowerCase().contains(search.toLowerCase());
+    }
+
+    private Comparator<MatchSuggestionResponse> getMatchSortComparator(String sort) {
+        String sortValue = sort == null ? "BEST_MATCH" : sort.trim().toUpperCase();
+
+        return switch (sortValue) {
+            case "AGE_ASC" -> Comparator.comparing(
+                    MatchSuggestionResponse::getAge,
+                    Comparator.nullsLast(Integer::compareTo)
+            );
+
+            case "AGE_DESC" -> Comparator.comparing(
+                    MatchSuggestionResponse::getAge,
+                    Comparator.nullsLast(Integer::compareTo)
+            ).reversed();
+
+            case "COMPLETION_HIGH" -> Comparator.comparing(
+                    MatchSuggestionResponse::getCompletionPct,
+                    Comparator.nullsLast(Integer::compareTo)
+            ).reversed();
+
+            case "VERIFIED_FIRST" -> Comparator
+                    .comparing(MatchSuggestionResponse::isVerified)
+                    .reversed()
+                    .thenComparing(
+                            MatchSuggestionResponse::getCompatibilityScore,
+                            Comparator.nullsLast(Integer::compareTo)
+                    )
+                    .reversed();
+
+            case "DISTRICT_MATCH_FIRST" -> Comparator
+                    .comparing((MatchSuggestionResponse m) -> m.getCompatibilityBreakdown() != null
+                            && m.getCompatibilityBreakdown().get("district") != null
+                            && m.getCompatibilityBreakdown().get("district").isMatched())
+                    .reversed()
+                    .thenComparing(
+                            MatchSuggestionResponse::getCompatibilityScore,
+                            Comparator.nullsLast(Integer::compareTo)
+                    )
+                    .reversed();
+
+            case "NEWEST", "RECENTLY_ACTIVE" -> Comparator.comparing(
+                    MatchSuggestionResponse::getProfileId,
+                    Comparator.nullsLast(UUID::compareTo)
+            ).reversed();
+
+            case "SCORE_HIGH", "BEST_MATCH" -> Comparator.comparing(
+                    MatchSuggestionResponse::getCompatibilityScore,
+                    Comparator.nullsLast(Integer::compareTo)
+            ).reversed();
+
+            default -> Comparator.comparing(
+                    MatchSuggestionResponse::getCompatibilityScore,
+                    Comparator.nullsLast(Integer::compareTo)
+            ).reversed();
+        };
     }
 }
