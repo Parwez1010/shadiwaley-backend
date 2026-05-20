@@ -1,6 +1,7 @@
 package com.shadiwaley.server.admin.dto.request;
 
 import com.shadiwaley.server.onboarding.dto.request.OnboardingProfileUpsertRequest;
+import com.shadiwaley.server.revenue.dto.request.OnboardingPlanRequest;
 import com.shadiwaley.server.user.domain.UserSide;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -21,4 +22,6 @@ public class CreateAdminFamilyRequest {
     @Valid
     @NotNull(message = "Onboarding data is required")
     private OnboardingProfileUpsertRequest onboarding;
+
+    private OnboardingPlanRequest plan;
 }

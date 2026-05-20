@@ -21,6 +21,8 @@ import com.shadiwaley.server.preferences.infrastructure.repository.UserPreferenc
 import com.shadiwaley.server.profile.domain.ProfileStatus;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
+import com.shadiwaley.server.revenue.application.service.RevenueService;
+import com.shadiwaley.server.revenue.dto.response.SubscriptionResponse;
 import com.shadiwaley.server.rishta.domain.RishtaRequestStatus;
 import com.shadiwaley.server.rishta.infrastructure.repository.RishtaRequestRepository;
 import com.shadiwaley.server.security.AuthUser;
@@ -41,6 +43,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -62,6 +65,7 @@ public class AdminDashboardService {
     private final CrmFollowUpRepository crmFollowUpRepository;
     private final SubscriptionService subscriptionService;
     private final UserPreferencesRepository userPreferencesRepository;
+    private final RevenueService revenueService;
 
 
     @Transactional(readOnly = true)
@@ -228,6 +232,9 @@ public class AdminDashboardService {
                 ? crmCase.getAssignedEmployee()
                 : null;
 
+        SubscriptionResponse subscription =
+                getCurrentSubscriptionOrNull(account.getId());
+
         return CrmFamilyDetailResponse.builder()
                 .userId(account.getId())
                 .profileId(profile.getId())
@@ -278,6 +285,17 @@ public class AdminDashboardService {
 
                 .assignedEmployeeId(assignedEmployee != null ? assignedEmployee.getId() : null)
                 .assignedEmployeeName(assignedEmployee != null ? assignedEmployee.getFullName() : "Unassigned")
+
+                .subscriptionId(subscription != null ? subscription.getSubscriptionId() : null)
+                .planCode(subscription != null ? subscription.getPlanCode() : "FREE_ONBOARDING")
+                .planName(subscription != null ? subscription.getPlanName() : "Free Onboarding")
+                .planAmount(subscription != null ? subscription.getAmount() : BigDecimal.ZERO)
+                .paymentStatus(subscription != null && subscription.getPaymentStatus() != null
+                        ? subscription.getPaymentStatus().name()
+                        : "NOT_REQUIRED")
+                .subscriptionStatus(subscription != null && subscription.getSubscriptionStatus() != null
+                        ? subscription.getSubscriptionStatus().name()
+                        : "FREE")
 
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
@@ -336,6 +354,9 @@ public class AdminDashboardService {
             planDisplayName = "Free Onboarding";
         }
 
+        SubscriptionResponse subscription =
+                getCurrentSubscriptionOrNull(account.getId());
+
         return CrmFamilyListResponse.builder()
                 .userId(account.getId())
                 .profileId(profile.getId())
@@ -392,6 +413,17 @@ public class AdminDashboardService {
 
                 .assignedEmployeeId(assignedEmployee != null ? assignedEmployee.getId() : null)
                 .assignedEmployeeName(assignedEmployee != null ? assignedEmployee.getFullName() : "Unassigned")
+
+                .subscriptionId(subscription != null ? subscription.getSubscriptionId() : null)
+                .planCode(subscription != null ? subscription.getPlanCode() : "FREE_ONBOARDING")
+                .planName(subscription != null ? subscription.getPlanName() : "Free Onboarding")
+                .planAmount(subscription != null ? subscription.getAmount() : BigDecimal.ZERO)
+                .paymentStatus(subscription != null && subscription.getPaymentStatus() != null
+                        ? subscription.getPaymentStatus().name()
+                        : "NOT_REQUIRED")
+                .subscriptionStatus(subscription != null && subscription.getSubscriptionStatus() != null
+                        ? subscription.getSubscriptionStatus().name()
+                        : "FREE")
 
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
@@ -581,6 +613,16 @@ public class AdminDashboardService {
             throw new org.springframework.security.access.AccessDeniedException(
                     "You can access only assigned families"
             );
+        }
+    }
+
+    private SubscriptionResponse getCurrentSubscriptionOrNull(UUID userId) {
+        try {
+            return revenueService
+                    .getFamilySubscription(userId)
+                    .getCurrentSubscription();
+        } catch (Exception ex) {
+            return null;
         }
     }
 }

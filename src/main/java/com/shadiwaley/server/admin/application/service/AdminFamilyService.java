@@ -19,6 +19,10 @@ import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepos
 import com.shadiwaley.server.profile.domain.ProfileStatus;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
+import com.shadiwaley.server.revenue.application.service.RevenueOnboardingService;
+import com.shadiwaley.server.revenue.application.service.RevenueService;
+import com.shadiwaley.server.revenue.domain.SubscriptionSource;
+import com.shadiwaley.server.revenue.dto.response.SubscriptionResponse;
 import com.shadiwaley.server.security.AuthUser;
 import com.shadiwaley.server.user.domain.UserRole;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
@@ -43,6 +47,9 @@ public class AdminFamilyService {
     private final OnboardingService onboardingService;
     private final AdminDashboardService adminDashboardService;
     private final AuditLogService auditLogService;
+    private final RevenueOnboardingService revenueOnboardingService;
+    private final RevenueService revenueService;
+
 
 
     @Transactional
@@ -67,6 +74,13 @@ public class AdminFamilyService {
         UserProfile profile = userProfileRepository.findByUserAccountId(savedAccount.getId())
                 .orElseThrow(() -> new EntityNotFoundException("Created profile not found"));
 
+        revenueOnboardingService.applyOnboardingPlan(
+                savedAccount.getId(),
+                profile.getId(),
+                request.getPlan(),
+                SubscriptionSource.FAMILY_ONBOARDING
+        );
+
         createDefaultCrmCase(savedAccount, profile);
 
         auditLogService.record(
@@ -84,6 +98,18 @@ public class AdminFamilyService {
         UserAccount account = getUser(userId);
 
         onboardingService.upsertProfileForUser(account.getId(), request);
+
+        UserProfile profile = userProfileRepository.findByUserAccountId(account.getId())
+                .orElseThrow(() -> new EntityNotFoundException("Profile not found"));
+
+        if (request.getPlan() != null) {
+            revenueOnboardingService.applyOnboardingPlan(
+                    account.getId(),
+                    profile.getId(),
+                    request.getPlan(),
+                    SubscriptionSource.FAMILY_DETAIL
+            );
+        }
 
         auditLogService.record(
                 AuditAction.SYSTEM_ACTION,
@@ -248,6 +274,32 @@ public class AdminFamilyService {
 
         if (profile.getCandidateAge() == null) {
             throw new IllegalArgumentException("Candidate age is required before submitting for review");
+        }
+    }
+
+    private void applySubscriptionFields(
+            CrmFamilyDetailResponse.CrmFamilyDetailResponseBuilder builder,
+            UUID userId
+    ) {
+        try {
+            var summary = revenueService.getFamilySubscription(userId);
+            var subscription = summary.getCurrentSubscription();
+
+            if (subscription == null) {
+                return;
+            }
+
+            builder.subscriptionId(subscription.getSubscriptionId())
+                    .planCode(subscription.getPlanCode())
+                    .planName(subscription.getPlanName())
+                    .planAmount(subscription.getAmount())
+                    .paymentStatus(subscription.getPaymentStatus() != null
+                            ? subscription.getPaymentStatus().name()
+                            : null)
+                    .subscriptionStatus(subscription.getSubscriptionStatus() != null
+                            ? subscription.getSubscriptionStatus().name()
+                            : null);
+        } catch (Exception ignored) {
         }
     }
 }

@@ -5,6 +5,7 @@ import com.shadiwaley.server.user.domain.UserSide;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -73,4 +74,13 @@ public class CrmFamilyListResponse {
 
     private Instant createdAt;
     private Instant updatedAt;
+
+    private UUID subscriptionId;
+
+    private String planCode;
+    private String planName;
+    private BigDecimal planAmount;
+
+    private String paymentStatus;
+    private String subscriptionStatus;
 }
