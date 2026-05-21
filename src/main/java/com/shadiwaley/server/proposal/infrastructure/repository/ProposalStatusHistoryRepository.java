@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface ProposalStatusHistoryRepository extends JpaRepository<ProposalStatusHistory, UUID> {
 
     List<ProposalStatusHistory> findByProposalIdOrderByCreatedAtAsc(UUID proposalId);
-}
+
+    List<ProposalStatusHistory> findByProposal_IdOrderByCreatedAtDesc(UUID proposalId);}

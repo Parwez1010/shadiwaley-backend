@@ -11,4 +11,6 @@ public interface CrmCaseTimelineRepository extends JpaRepository<CrmCaseTimeline
     List<CrmCaseTimeline> findByCrmCaseIdOrderByCreatedAtDesc(UUID crmCaseId);
     List<CrmCaseTimeline> findTop20ByOrderByCreatedAtDesc();
     List<CrmCaseTimeline> findTop20ByCrmCaseAssignedEmployeeIdOrderByCreatedAtDesc(UUID employeeId);
+    List<CrmCaseTimeline> findByCrmCase_IdOrderByCreatedAtDesc(UUID crmCaseId);
+
 }

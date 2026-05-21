@@ -3,6 +3,7 @@ package com.shadiwaley.server.crm.infrastructure.entity;
 import com.shadiwaley.server.crm.domain.CrmFollowUpChannel;
 import com.shadiwaley.server.crm.domain.CrmFollowUpStatus;
 import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
+import com.shadiwaley.server.proposal.infrastructure.entity.Proposal;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -26,6 +27,10 @@ public class CrmFollowUp {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_employee_id")
     private EmployeeAccount assignedEmployee;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "proposal_id")
+    private Proposal proposal;
 
     @Column(name = "scheduled_at", nullable = false)
     private Instant scheduledAt;
