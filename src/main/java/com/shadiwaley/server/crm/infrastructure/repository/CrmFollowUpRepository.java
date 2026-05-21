@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface CrmFollowUpRepository extends JpaRepository<CrmFollowUp, UUID> {
@@ -48,4 +49,8 @@ public interface CrmFollowUpRepository extends JpaRepository<CrmFollowUp, UUID> 
             CrmFollowUpStatus status,
             Instant now
     );
+
+    Optional<CrmFollowUp> findTopByProposal_IdOrderByScheduledAtDesc(UUID proposalId);
+
+    List<CrmFollowUp> findByProposal_IdOrderByScheduledAtDesc(UUID proposalId);
 }
