@@ -21,6 +21,8 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, UUID>,
             com.shadiwaley.server.profile.domain.ProfileStatus profileStatus
     );
 
+    Page<UserProfile> findAll(Pageable pageable);
+
     @Query("""
 SELECT up
 FROM UserProfile up
