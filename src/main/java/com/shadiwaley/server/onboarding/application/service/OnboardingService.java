@@ -51,7 +51,7 @@ public class OnboardingService {
                 .orElseThrow(() -> new EntityNotFoundException("Parent profile not found"));
 
         ProfileCompletionResponse completion =
-                profileCompletionService.recalculateAndApply(userAccount, profile, parent);
+                profileCompletionService.recalculateAndApplyForCustomerOnboarding(userAccount, profile, parent);
 
         return toOnboardingResponse(completion);
     }
@@ -99,7 +99,7 @@ public class OnboardingService {
         }
 
         ProfileCompletionResponse completion =
-                profileCompletionService.recalculateAndApply(userAccount, profile, parent);
+                profileCompletionService.recalculateAndApplyForCustomerOnboarding(userAccount, profile, parent);
 
         milestoneService.evaluateMilestones(userId);
     }

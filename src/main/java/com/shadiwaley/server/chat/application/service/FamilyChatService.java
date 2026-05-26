@@ -16,6 +16,8 @@ import com.shadiwaley.server.notification.application.service.NotificationServic
 import com.shadiwaley.server.notification.domain.NotificationType;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
+import com.shadiwaley.server.proposal.infrastructure.entity.Proposal;
+import com.shadiwaley.server.proposal.infrastructure.repository.ProposalRepository;
 import com.shadiwaley.server.rishta.domain.RishtaRequestStatus;
 import com.shadiwaley.server.rishta.infrastructure.entity.RishtaRequest;
 import com.shadiwaley.server.safety.application.service.UserSafetyService;
@@ -48,6 +50,8 @@ public class FamilyChatService {
     private final ChatPresenceService chatPresenceService;
     private final AuditLogService auditLogService;
     private final UserSafetyService userSafetyService;
+    private final ProposalRepository proposalRepository;
+
 
     @Transactional
     public FamilyChatRoom createRoomForAcceptedRishta(RishtaRequest rishtaRequest) {
@@ -68,8 +72,50 @@ public class FamilyChatService {
                         room.setGirlUser(rishtaRequest.getSenderUser());
                     }
 
+                    /*
+                     * Admin Chat Monitor linkage:
+                     * Proposal -> CRM Case -> Assigned CRM Employee
+                     */
+                    linkProposalAndCrm(room, rishtaRequest);
+
                     return chatRoomRepository.save(room);
                 });
+    }
+
+    private void linkProposalAndCrm(
+            FamilyChatRoom room,
+            RishtaRequest rishtaRequest
+    ) {
+        if (rishtaRequest.getSenderProfile() == null
+                || rishtaRequest.getReceiverProfile() == null) {
+            return;
+        }
+
+        UUID senderProfileId = rishtaRequest.getSenderProfile().getId();
+        UUID receiverProfileId = rishtaRequest.getReceiverProfile().getId();
+
+        Proposal proposal = proposalRepository
+                .findTopByFromProfileIdAndToProfileIdOrderByCreatedAtDesc(
+                        senderProfileId,
+                        receiverProfileId
+                )
+                .or(() -> proposalRepository
+                        .findTopByToProfileIdAndFromProfileIdOrderByCreatedAtDesc(
+                                receiverProfileId,
+                                senderProfileId
+                        ))
+                .orElse(null);
+
+        if (proposal == null) {
+            return;
+        }
+
+        room.setProposal(proposal);
+        room.setCrmCase(proposal.getCrmCase());
+
+        if (proposal.getCrmCase() != null) {
+            room.setAssignedEmployee(proposal.getCrmCase().getAssignedEmployee());
+        }
     }
 
     @Transactional(readOnly = true)
@@ -101,6 +147,7 @@ public class FamilyChatService {
                 PageRequest.of(0, safeLimit + 1)
         );
 
+
         boolean hasMore = fetched.size() > safeLimit;
 
         List<FamilyChatMessage> page = hasMore
@@ -108,6 +155,7 @@ public class FamilyChatService {
                 : fetched;
 
         List<ChatMessageResponse> messages = page.stream()
+                .filter(this::visibleToCustomer)
                 .sorted(Comparator.comparing(FamilyChatMessage::getSentAt))
                 .map(message -> toMessageResponse(message, userId))
                 .toList();
@@ -187,7 +235,7 @@ public class FamilyChatService {
 
         FamilyChatMessage saved = chatMessageRepository.save(message);
 
-        room.setUpdatedAt(Instant.now());
+        updateRoomReadModelAfterMessage(room, saved, sender);
         chatRoomRepository.save(room);
 
         UUID receiverUserId = getOtherUserId(room, senderUserId);
@@ -364,7 +412,7 @@ public class FamilyChatService {
                 .senderUserId(message.getSenderUser().getId())
                 .senderDisplayName(senderProfile != null ? senderProfile.getCandidateFirstName() : "Family")
                 .messageType(message.getMessageType())
-                .content(message.getContent())
+                .content(resolveCustomerMessageContent(message))
                 .mediaFileId(message.getMediaFile() != null
                         ? message.getMediaFile().getId()
                         : null)
@@ -430,6 +478,13 @@ public class FamilyChatService {
         room.setBlockedByUser(blocker);
         room.setStatus(ChatRoomStatus.BLOCKED);
 
+        /*
+         * Admin monitor read-model support
+         */
+        room.setNeedsAttention(true);
+        room.setLastReportReason("Blocked by family");
+        room.setUpdatedAt(Instant.now());
+
         chatRoomRepository.save(room);
 
         auditLogService.record(
@@ -439,7 +494,6 @@ public class FamilyChatService {
                 "Chat room blocked"
         );
     }
-
     @Transactional
     public void closeRoom(UUID roomId) {
 
@@ -447,8 +501,9 @@ public class FamilyChatService {
 
         FamilyChatRoom room = getAuthorizedRoom(roomId, userId);
 
-        room.setStatus(ChatRoomStatus.CLOSED);
+        room.setStatus(ChatRoomStatus.CLOSED_BY_ADMIN);
         room.setClosedAt(Instant.now());
+        room.setNeedsAttention(false);
 
         chatRoomRepository.save(room);
         auditLogService.record(
@@ -490,6 +545,14 @@ public class FamilyChatService {
 
         message.setModerationStatus(ChatModerationStatus.UNDER_REVIEW);
 
+        FamilyChatRoom room = message.getRoom();
+        room.setReported(true);
+        room.setNeedsAttention(true);
+        room.setStatus(ChatRoomStatus.REPORTED);
+        room.setLastReportReason(request.getReason());
+        chatRoomRepository.save(room);
+
+
         chatMessageRepository.save(message);
         auditLogService.record(
                 AuditAction.CHAT_MESSAGE_REPORTED,
@@ -510,5 +573,84 @@ public class FamilyChatService {
         );
     }
 
+    private void updateRoomReadModelAfterMessage(
+            FamilyChatRoom room,
+            FamilyChatMessage message,
+            UserAccount sender
+    ) {
+        room.setLastMessageText(preview(message.getContent()));
+        room.setLastMessageType(message.getMessageType());
+        room.setLastMessageAt(message.getSentAt());
+        room.setLastMessageByName(resolveSenderDisplayName(sender));
+        room.setMessageCount(room.getMessageCount() + 1);
+        room.setUpdatedAt(Instant.now());
+
+        if (room.getStatus() == ChatRoomStatus.PENDING_RESPONSE
+                || room.getStatus() == ChatRoomStatus.NEEDS_CRM_ATTENTION) {
+            room.setStatus(ChatRoomStatus.ACTIVE);
+            room.setNeedsAttention(false);
+        }
+    }
+
+    private String resolveSenderDisplayName(UserAccount sender) {
+        return userProfileRepository.findByUserAccountId(sender.getId())
+                .map(UserProfile::getCandidateFirstName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("Family");
+    }
+
+    private boolean visibleToCustomer(FamilyChatMessage message) {
+        if (message.getDeletedAt() != null) {
+            return true; // show "This message was deleted."
+        }
+
+        if (message.getModerationStatus() == ChatModerationStatus.HIDDEN
+                || message.getModerationStatus() == ChatModerationStatus.DELETED) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private String resolveCustomerMessageContent(FamilyChatMessage message) {
+        if (message.getDeletedAt() != null) {
+            return "This message was deleted.";
+        }
+
+        if (message.getModerationStatus() == ChatModerationStatus.HIDDEN
+                || message.getModerationStatus() == ChatModerationStatus.DELETED) {
+            return "This message is not available.";
+        }
+
+        return message.getContent();
+    }
+
+    @Transactional
+    public int backfillChatRoomBusinessLinks() {
+        List<FamilyChatRoom> rooms = chatRoomRepository.findAll();
+
+        int updated = 0;
+
+        for (FamilyChatRoom room : rooms) {
+            if (room.getProposal() != null) {
+                continue;
+            }
+
+            RishtaRequest rishtaRequest = room.getRishtaRequest();
+
+            if (rishtaRequest == null) {
+                continue;
+            }
+
+            linkProposalAndCrm(room, rishtaRequest);
+
+            if (room.getProposal() != null) {
+                chatRoomRepository.save(room);
+                updated++;
+            }
+        }
+
+        return updated;
+    }
 
 }

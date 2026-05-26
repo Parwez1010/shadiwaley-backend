@@ -7,6 +7,7 @@ import com.shadiwaley.server.common.response.ApiResponse;
 import com.shadiwaley.server.common.response.ResponseFactory;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -114,6 +115,15 @@ public class FamilyChatController {
         return ResponseFactory.success(
                 "Message reported successfully",
                 null
+        );
+    }
+
+    @PostMapping("/admin/chat-monitor/backfill-links")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<Integer> backfillChatLinks() {
+        return ResponseFactory.success(
+                "Chat room business links backfilled successfully",
+                familyChatService.backfillChatRoomBusinessLinks()
         );
     }
 

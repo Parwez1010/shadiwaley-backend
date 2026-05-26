@@ -35,6 +35,24 @@ public class ProfileCompletionService {
         return buildResponse(profile, missingFields);
     }
 
+    public ProfileCompletionResponse recalculateAndApplyForCustomerOnboarding(
+            UserAccount userAccount,
+            UserProfile profile,
+            ParentProfile parent
+    ) {
+        List<MissingFieldResponse> missingFields =
+                calculateMissingFields(userAccount, profile, parent);
+
+        short completionPct =
+                calculateCompletion(userAccount, profile, parent);
+
+        profile.setCompletionPct(completionPct);
+        profile.setProfileStatus(resolveCustomerOnboardingStatus(profile, missingFields));
+
+        return buildResponse(profile, missingFields);
+    }
+
+
     public ProfileCompletionResponse buildCurrentResponse(
             UserAccount userAccount,
             UserProfile profile,
@@ -258,5 +276,31 @@ public class ProfileCompletionService {
 
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
+    }
+
+    private ProfileStatus resolveCustomerOnboardingStatus(
+            UserProfile profile,
+            List<MissingFieldResponse> missingFields
+    ) {
+        if (profile.getProfileStatus() == ProfileStatus.SUSPENDED) {
+            return ProfileStatus.SUSPENDED;
+        }
+
+        boolean hasHighMissing = missingFields.stream()
+                .anyMatch(field -> "HIGH".equals(field.getPriority()));
+
+        /*
+         * Customer onboarding must never make profile LIVE directly.
+         * LIVE should only happen after admin/verifier approval.
+         */
+        if (profile.getCompletionPct() >= 85 && !hasHighMissing) {
+            return ProfileStatus.PENDING_VERIFICATION;
+        }
+
+        if (profile.getCompletionPct() >= 70) {
+            return ProfileStatus.PENDING_VERIFICATION;
+        }
+
+        return ProfileStatus.INCOMPLETE;
     }
 }
