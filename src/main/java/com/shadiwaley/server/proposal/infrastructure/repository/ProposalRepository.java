@@ -192,4 +192,10 @@ public interface ProposalRepository extends JpaRepository<Proposal, UUID>, JpaSp
     boolean existsByFromProfile_IdAndToProfile_Id(UUID fromProfileId, UUID toProfileId);
 
     boolean existsByToProfile_IdAndFromProfile_Id(UUID toProfileId, UUID fromProfileId);
+
+
+    Optional<Proposal> findTopByToProfileIdAndFromProfileIdOrderByCreatedAtDesc(
+            UUID toProfileId,
+            UUID fromProfileId
+    );
 }

@@ -1,7 +1,13 @@
 package com.shadiwaley.server.chat.domain;
 
 public enum ChatModerationStatus {
-    VISIBLE,
+    CLEAN,
+    FLAGGED,
     HIDDEN,
-    UNDER_REVIEW
+    DELETED,
+    REPORTED,
+    UNDER_REVIEW,
+
+    // legacy support
+    VISIBLE
 }

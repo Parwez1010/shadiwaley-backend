@@ -236,8 +236,7 @@ public class MediaService {
         ParentProfile parentProfile = parentProfileRepository.findByUserAccountId(userId)
                 .orElseThrow(() -> new EntityNotFoundException("Parent profile not found"));
 
-        profileCompletionService.recalculateAndApply(userAccount, userProfile, parentProfile);
-        milestoneService.evaluateMilestones(userId);
+        profileCompletionService.recalculateAndApplyForCustomerOnboarding(userAccount, userProfile, parentProfile);        milestoneService.evaluateMilestones(userId);
 
         userProfileRepository.save(userProfile);
     }

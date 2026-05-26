@@ -90,7 +90,7 @@ public class FamilyChatMessage {
             sentAt = Instant.now();
         }
         if (moderationStatus == null) {
-            moderationStatus = ChatModerationStatus.VISIBLE;
+            moderationStatus = ChatModerationStatus.CLEAN;
         }
     }
 }
