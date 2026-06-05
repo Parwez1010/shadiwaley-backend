@@ -2,6 +2,7 @@ package com.shadiwaley.server.media.infrastructure.storage;
 
 import com.shadiwaley.server.media.application.storage.FileStorageService;
 import com.shadiwaley.server.media.application.storage.StoredFile;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -11,7 +12,18 @@ import java.nio.file.*;
 import java.util.UUID;
 
 @Service
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "app.storage.provider",
+        havingValue = "local",
+        matchIfMissing = true
+)
 public class LocalFileStorageService implements FileStorageService {
+
+    @PostConstruct
+    public void init() {
+        System.out.println("ACTIVE STORAGE PROVIDER: LOCAL");
+    }
+
 
     @Value("${app.storage.local-upload-dir}")
     private String localUploadDir;

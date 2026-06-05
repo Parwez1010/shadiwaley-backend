@@ -23,4 +23,8 @@ public class OnboardingOptionsResponse {
     private List<String> preferredCaste;
     private List<String> maslak;
     private List<String> preferredMaslak;
+    private  List<String> state;
+    private  List<String> district;
+    private  List<String> preferredState;
+    private  List<String> preferredDistrict;
 }
