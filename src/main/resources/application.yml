@@ -49,7 +49,15 @@ app:
       full-name: Shadiwaley Super Admin
 
   storage:
+    provider: r2
     local-upload-dir: ./uploads
+
+    r2:
+      bucket-name: ${R2_BUCKET_NAME:shadiwaley-media-prod}
+      endpoint: ${R2_ENDPOINT:}
+      access-key: ${R2_ACCESS_KEY:}
+      secret-key: ${R2_SECRET_KEY:}
+      region: auto
 
 management:
   endpoints:

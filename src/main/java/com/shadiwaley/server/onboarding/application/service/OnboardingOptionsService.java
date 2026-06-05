@@ -193,6 +193,24 @@ public class OnboardingOptionsService {
                         "JAMAT_E_ISLAMI",
                         "TABLIGHI",
                         "OTHER"
+                )).state(List.of(
+                        "BIHAR"
+                )).preferredState(List.of(
+                        "Any",
+                        "BIHAR"
+                )).district(List.of(
+                        "SIWAN",
+                        "CHHAPRA",
+                        "GOPALGANJ",
+                        "PATNA",
+                        "HAJIPUR"
+                )).preferredDistrict(List.of(
+                        "ANY",
+                        "SIWAN",
+                        "CHHAPRA",
+                        "GOPALGANJ",
+                        "PATNA",
+                        "HAJIPUR"
                 ))
                 .mediaType(toNames(MediaType.values()))
                 .whatsappConsent(toNames(WhatsappConsent.values()))

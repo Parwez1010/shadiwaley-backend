@@ -84,7 +84,8 @@ public class MediaService {
                     });
         }
 
-        String folder = userAccount.getId() + "/" + mediaType.name().toLowerCase();
+        String folder = resolveMediaFolder(userAccount.getId(), mediaType);
+
         StoredFile storedFile = fileStorageService.store(file, folder);
 
         MediaFile mediaFile = new MediaFile();
@@ -439,71 +440,51 @@ public class MediaService {
         UserProfile userProfile = userProfileRepository.findByUserAccountId(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User profile not found"));
 
-        String storageKey = storeMediaFile(userId, file);
+        validateFile(file, mediaType);
+
+        if (primary) {
+            mediaFileRepository
+                    .findByUserProfileIdAndMediaTypeAndPrimaryTrueAndDeletedFalse(
+                            userProfile.getId(),
+                            MediaType.PROFILE_PHOTO
+                    )
+                    .ifPresent(existing -> {
+                        existing.setPrimary(false);
+                        mediaFileRepository.save(existing);
+                    });
+        }
+
+        WhatsappConsent resolvedConsent = resolveConsent(mediaType, whatsappConsent);
+        MediaVisibility visibility = resolveVisibility(mediaType, resolvedConsent);
+
+        String folder = resolveMediaFolder(userAccount.getId(), mediaType);
+
+        StoredFile storedFile = fileStorageService.store(file, folder);
 
         MediaFile mediaFile = new MediaFile();
         mediaFile.setUserAccount(userAccount);
         mediaFile.setUserProfile(userProfile);
-        mediaFile.setMediaType(mediaType);
-        mediaFile.setOriginalFileName(file.getOriginalFilename());
-        mediaFile.setStoredFileName(Paths.get(storageKey).getFileName().toString());
-        mediaFile.setStorageKey(storageKey);
-        mediaFile.setContentType(file.getContentType());
-        mediaFile.setFileSizeBytes(file.getSize());
+        mediaFile.setMediaType(primary ? MediaType.PROFILE_PHOTO : mediaType);
+        mediaFile.setOriginalFileName(storedFile.originalFileName());
+        mediaFile.setStoredFileName(storedFile.storedFileName());
+        mediaFile.setStorageKey(storedFile.storageKey());
+        mediaFile.setContentType(storedFile.contentType());
+        mediaFile.setFileSizeBytes(storedFile.fileSizeBytes());
         mediaFile.setPrimary(primary);
-        mediaFile.setWhatsappConsent(whatsappConsent);
-        mediaFile.setVisibility(MediaVisibility.PRIVATE);
+        mediaFile.setWhatsappConsent(resolvedConsent);
+        mediaFile.setVisibility(visibility);
         mediaFile.setReviewStatus(MediaReviewStatus.PENDING_REVIEW);
         mediaFile.setDeleted(false);
 
         MediaFile saved = mediaFileRepository.save(mediaFile);
 
-        return MediaUploadResponse.builder()
-                .mediaId(saved.getId())
-                .userId(saved.getUserAccount().getId())
-                .profileId(saved.getUserProfile().getId())
-                .mediaType(saved.getMediaType())
-                .fileName(saved.getOriginalFileName())
-                .contentType(saved.getContentType())
-                .fileSizeBytes(saved.getFileSizeBytes())
-                .primary(saved.isPrimary())
-                .whatsappConsent(saved.getWhatsappConsent())
-                .reviewStatus(saved.getReviewStatus())
-                .adminPreviewUrl(
-                        "/api/v1/admin/crm/families/"
-                                + saved.getUserAccount().getId()
-                                + "/media/"
-                                + saved.getId()
-                                + "/view"
-                )               .createdAt(saved.getCreatedAt())
-                .build();
-    }
+        recalculateProfileCompletion(
+                userId,
+                userAccount,
+                userProfile
+        );
 
-    private String storeMediaFile(UUID userId, MultipartFile file) {
-        try {
-            String originalName = file.getOriginalFilename() == null
-                    ? "file"
-                    : file.getOriginalFilename();
-
-            String extension = "";
-            int dotIndex = originalName.lastIndexOf(".");
-            if (dotIndex >= 0) {
-                extension = originalName.substring(dotIndex);
-            }
-
-            String storedFileName = UUID.randomUUID() + extension;
-
-            Path directory = Paths.get("uploads", "family-media", userId.toString()).normalize();
-            Files.createDirectories(directory);
-
-            Path target = directory.resolve(storedFileName).normalize();
-            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-
-            return target.toString();
-
-        } catch (Exception ex) {
-            throw new IllegalArgumentException("Unable to upload media file");
-        }
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -638,6 +619,15 @@ public class MediaService {
         return toResponse(saved);
     }
 
+    private String resolveMediaFolder(UUID userId, MediaType mediaType) {
+        return switch (mediaType) {
+            case PROFILE_PHOTO -> "families/" + userId + "/profile-photos";
+            case GALLERY_PHOTO -> "families/" + userId + "/gallery";
+            case ID_PROOF -> "families/" + userId + "/id-proofs";
+            case INCOME_PROOF -> "families/" + userId + "/income-proofs";
+            case OTHER -> "families/" + userId + "/other";
+        };
+    }
 
 
 
