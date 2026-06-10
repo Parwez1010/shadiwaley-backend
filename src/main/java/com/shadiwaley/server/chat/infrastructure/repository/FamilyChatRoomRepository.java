@@ -40,4 +40,9 @@ public interface FamilyChatRoomRepository extends JpaRepository<FamilyChatRoom, 
             @Param("fromDate") Instant fromDate,
             @Param("toDate") Instant toDate
     );
+
+    List<FamilyChatRoom> findByBoyUserIdOrGirlUserId(
+            UUID boyUserId,
+            UUID girlUserId
+    );
 }

@@ -32,4 +32,16 @@ public class ProfileCardResponse {
     private MatchBreakdownResponse match;
     private String religion;
     private com.shadiwaley.server.profile.domain.MaritalStatus maritalStatus;
+
+    private String houseType;
+
+    private Integer mehrOffered;
+
+    private Integer mehrMinimumExpected;
+
+    private String expectationsText;
+
+    private boolean saved;
+
+    private String proposalStatus;
 }

@@ -8,6 +8,8 @@ import com.shadiwaley.server.chat.dto.request.ReportChatMessageRequest;
 import com.shadiwaley.server.chat.dto.request.SendChatMessageRequest;
 import com.shadiwaley.server.chat.dto.request.UpdateChatMessageRequest;
 import com.shadiwaley.server.chat.dto.response.*;
+import com.shadiwaley.server.chat.dto.websocket.AdminChatMonitorEvent;
+import com.shadiwaley.server.chat.dto.websocket.ChatWebSocketEvent;
 import com.shadiwaley.server.chat.infrastructure.entity.*;
 import com.shadiwaley.server.chat.infrastructure.repository.*;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
@@ -22,6 +24,9 @@ import com.shadiwaley.server.rishta.domain.RishtaRequestStatus;
 import com.shadiwaley.server.rishta.infrastructure.entity.RishtaRequest;
 import com.shadiwaley.server.safety.application.service.UserSafetyService;
 import com.shadiwaley.server.security.AuthUser;
+import com.shadiwaley.server.subscription.domain.PlanType;
+import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
+import com.shadiwaley.server.subscription.infrastructure.repository.SubscriptionRepository;
 import com.shadiwaley.server.user.domain.UserSide;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
@@ -52,6 +57,9 @@ public class FamilyChatService {
     private final UserSafetyService userSafetyService;
     private final ProposalRepository proposalRepository;
 
+    private final SubscriptionRepository subscriptionRepository;
+    private final AdminChatMonitorEventPublisher adminChatMonitorEventPublisher;
+
 
     @Transactional
     public FamilyChatRoom createRoomForAcceptedRishta(RishtaRequest rishtaRequest) {
@@ -71,6 +79,12 @@ public class FamilyChatService {
                         room.setBoyUser(rishtaRequest.getReceiverUser());
                         room.setGirlUser(rishtaRequest.getSenderUser());
                     }
+                    room.setChatMode(
+                            resolveChatMode(
+                                    room.getBoyUser().getId(),
+                                    room.getGirlUser().getId()
+                            )
+                    );
 
                     /*
                      * Admin Chat Monitor linkage:
@@ -80,6 +94,64 @@ public class FamilyChatService {
 
                     return chatRoomRepository.save(room);
                 });
+    }
+
+    private ChatMode resolveChatMode(
+            UUID boyUserId,
+            UUID girlUserId
+    ) {
+        boolean boyHasCrmSupport = hasCrmSupportPlan(boyUserId);
+        boolean girlHasCrmSupport = hasCrmSupportPlan(girlUserId);
+
+        if (boyHasCrmSupport && girlHasCrmSupport) {
+            return ChatMode.CRM_TO_CRM;
+        }
+
+        if (boyHasCrmSupport || girlHasCrmSupport) {
+            return ChatMode.CRM_ASSISTED;
+        }
+
+        return ChatMode.DIRECT_FAMILY;
+    }
+
+    private boolean hasPaidPlan(UUID userId) {
+
+        return subscriptionRepository
+                .findTopByUserAccountIdAndStatusOrderByCreatedAtDesc(
+                        userId,
+                        SubscriptionStatus.ACTIVE
+                )
+                .filter(subscription ->
+                        subscription.getExpiresAt() == null
+                                || subscription.getExpiresAt().isAfter(Instant.now())
+                )
+                .map(subscription ->
+                        switch (subscription.getPlanType()) {
+                            case BASIC_299, PREMIUM_999, ELITE_2499 -> true;
+                            case FREE_ONBOARDING -> false;
+                        }
+                )
+                .orElse(false);
+    }
+
+    private boolean hasCrmSupportPlan(UUID userId) {
+
+        return subscriptionRepository
+                .findTopByUserAccountIdAndStatusOrderByCreatedAtDesc(
+                        userId,
+                        SubscriptionStatus.ACTIVE
+                )
+                .filter(subscription ->
+                        subscription.getExpiresAt() == null
+                                || subscription.getExpiresAt().isAfter(Instant.now())
+                )
+                .map(subscription ->
+                        switch (subscription.getPlanType()) {
+                            case BASIC_299, PREMIUM_999, ELITE_2499 -> true;
+                            case FREE_ONBOARDING -> false;
+                        }
+                )
+                .orElse(false);
     }
 
     private void linkProposalAndCrm(
@@ -226,6 +298,13 @@ public class FamilyChatService {
         FamilyChatMessage message = new FamilyChatMessage();
         message.setRoom(room);
         message.setSenderUser(sender);
+
+// New sender tracking fields
+        message.setSenderType(ChatSenderType.CUSTOMER);
+        message.setSenderEmployee(null);
+        message.setAssistedUser(null);
+        message.setAssistedFamilyName(null);
+
         message.setMessageType(request.getMessageType());
         message.setContent(request.getContent());
         message.setMediaFile(media);
@@ -254,10 +333,25 @@ public class FamilyChatService {
 
         ChatMessageResponse response = toMessageResponse(saved, senderUserId);
 
-        messagingTemplate.convertAndSend(
-                "/topic/chat.room." + room.getId(),
+        publishRoomEvent(
+                room.getId(),
+                ChatSocketEventType.MESSAGE_RECEIVED,
                 response
         );
+
+        adminChatMonitorEventPublisher.publish(
+                AdminChatMonitorEvent.builder()
+                        .event(ChatSocketEventType.ADMIN_NEW_CHAT_MESSAGE)
+                        .roomId(room.getId())
+                        .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                        .title("New family message")
+                        .message("A new message was sent in a monitored family chat.")
+                        .emittedAt(Instant.now())
+                        .build()
+        );
+
 
         return response;
     }
@@ -289,8 +383,11 @@ public class FamilyChatService {
         FamilyChatMessage saved = chatMessageRepository.save(message);
         ChatMessageResponse response = toMessageResponse(saved, userId);
 
-        messagingTemplate.convertAndSend("/topic/chat.room." + roomId, response);
-
+        publishRoomEvent(
+                roomId,
+                ChatSocketEventType.MESSAGE_EDITED,
+                response
+        );
         return response;
     }
 
@@ -324,8 +421,9 @@ public class FamilyChatService {
 
         FamilyChatMessage saved = chatMessageRepository.save(message);
 
-        messagingTemplate.convertAndSend(
-                "/topic/chat.room." + roomId,
+        publishRoomEvent(
+                roomId,
+                ChatSocketEventType.MESSAGE_DELETED,
                 toMessageResponse(saved, userId)
         );
     }
@@ -347,9 +445,14 @@ public class FamilyChatService {
             chatMessageRepository.save(message);
         });
 
-        messagingTemplate.convertAndSend(
-                "/topic/chat.room." + roomId + ".read",
-                Map.of("roomId", roomId, "readerUserId", userId, "readAt", now)
+        publishRoomEvent(
+                roomId,
+                ChatSocketEventType.READ_RECEIPT,
+                Map.of(
+                        "roomId", roomId,
+                        "readerUserId", userId,
+                        "readAt", now
+                )
         );
     }
 
@@ -385,6 +488,15 @@ public class FamilyChatService {
         long unreadCount = chatMessageRepository
                 .countByRoomIdAndSenderUserIdNotAndReadAtIsNullAndDeletedAtIsNull(room.getId(), currentUserId);
 
+        boolean boyHasCrmSupport =
+                hasCrmSupportPlan(room.getBoyUser().getId());
+
+        boolean girlHasCrmSupport =
+                hasCrmSupportPlan(room.getGirlUser().getId());
+
+        String expectedSpeaker =
+                resolveExpectedSpeaker(room, currentUserId, boyHasCrmSupport, girlHasCrmSupport);
+
         return ChatRoomResponse.builder()
                 .roomId(room.getId())
                 .rishtaRequestId(room.getRishtaRequest().getId())
@@ -393,11 +505,42 @@ public class FamilyChatService {
                 .otherDisplayId(otherProfile.getDisplayId())
                 .otherName(otherProfile.getCandidateFirstName())
                 .status(room.getStatus())
+                .chatMode(room.getChatMode() != null ? room.getChatMode().name() : null)
+                .boyHasCrmSupport(boyHasCrmSupport)
+                .girlHasCrmSupport(girlHasCrmSupport)
+                .expectedSpeaker(expectedSpeaker)
                 .lastMessage(lastMessage != null ? lastMessage.getContent() : null)
                 .lastMessageAt(lastMessage != null ? lastMessage.getSentAt() : null)
                 .unreadCount(unreadCount)
                 .createdAt(room.getCreatedAt())
                 .build();
+    }
+
+    private String resolveExpectedSpeaker(
+            FamilyChatRoom room,
+            UUID currentUserId,
+            boolean boyHasCrmSupport,
+            boolean girlHasCrmSupport
+    ) {
+        if (room.getChatMode() == ChatMode.DIRECT_FAMILY) {
+            return "FAMILY";
+        }
+
+        if (room.getChatMode() == ChatMode.CRM_TO_CRM) {
+            return "CRM";
+        }
+
+        boolean currentUserIsBoy =
+                room.getBoyUser().getId().equals(currentUserId);
+
+        boolean currentUserHasCrmSupport =
+                currentUserIsBoy ? boyHasCrmSupport : girlHasCrmSupport;
+
+        if (currentUserHasCrmSupport) {
+            return "CRM_ASSISTS_YOU";
+        }
+
+        return "FAMILY";
     }
 
     private ChatMessageResponse toMessageResponse(FamilyChatMessage message, UUID currentUserId) {
@@ -409,8 +552,26 @@ public class FamilyChatService {
         return ChatMessageResponse.builder()
                 .messageId(message.getId())
                 .roomId(message.getRoom().getId())
-                .senderUserId(message.getSenderUser().getId())
+
+                .senderUserId(message.getSenderUser() != null ? message.getSenderUser().getId() : null)
                 .senderDisplayName(senderProfile != null ? senderProfile.getCandidateFirstName() : "Family")
+
+                .senderType(message.getSenderType())
+
+                .senderEmployeeId(message.getSenderEmployee() != null
+                        ? message.getSenderEmployee().getId()
+                        : null)
+
+                .senderEmployeeName(message.getSenderEmployee() != null
+                        ? message.getSenderEmployee().getFullName()
+                        : null)
+
+                .assistedUserId(message.getAssistedUser() != null
+                        ? message.getAssistedUser().getId()
+                        : null)
+
+                .assistedFamilyName(message.getAssistedFamilyName())
+
                 .messageType(message.getMessageType())
                 .content(resolveCustomerMessageContent(message))
                 .mediaFileId(message.getMediaFile() != null
@@ -423,7 +584,8 @@ public class FamilyChatService {
                 .replyToMessageId(reply != null ? reply.getId() : null)
                 .replyPreview(reply != null ? preview(reply.getContent()) : null)
                 .deliveryStatus(message.getDeliveryStatus())
-                .mine(message.getSenderUser().getId().equals(currentUserId))
+                .mine(message.getSenderUser() != null
+                        && message.getSenderUser().getId().equals(currentUserId))
                 .edited(message.getEditedAt() != null)
                 .deleted(message.getDeletedAt() != null)
                 .sentAt(message.getSentAt())
@@ -560,13 +722,27 @@ public class FamilyChatService {
                 message.getId(),
                 "Chat message reported: " + request.getReason()
         );
+
+        adminChatMonitorEventPublisher.publish(
+                AdminChatMonitorEvent.builder()
+                        .event(ChatSocketEventType.ADMIN_ROOM_NEEDS_ATTENTION)
+                        .roomId(room.getId())
+                        .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                        .title("Chat needs attention")
+                        .message("A family reported a message.")
+                        .emittedAt(Instant.now())
+                        .build()
+        );
     }
 
     public void sendTyping(UUID roomId, UUID senderUserId) {
 
-        messagingTemplate.convertAndSend(
-                "/topic/chat.room." + roomId + ".typing",
-                java.util.Map.of(
+        publishRoomEvent(
+                roomId,
+                ChatSocketEventType.TYPING,
+                Map.of(
                         "roomId", roomId,
                         "senderUserId", senderUserId
                 )
@@ -651,6 +827,36 @@ public class FamilyChatService {
         }
 
         return updated;
+    }
+
+    private void publishRoomEvent(
+            UUID roomId,
+            String event,
+            Object payload
+    ) {
+        messagingTemplate.convertAndSend(
+                "/topic/chat.room." + roomId,
+                ChatWebSocketEvent.builder()
+                        .event(event)
+                        .roomId(roomId)
+                        .payload(payload)
+                        .emittedAt(Instant.now())
+                        .build()
+        );
+    }
+
+    public ChatPresenceResponse getPresence(
+            UUID userId
+    ) {
+        return ChatPresenceResponse.builder()
+                .userId(userId)
+                .online(
+                        chatPresenceService.isOnline(userId)
+                )
+                .lastSeenAt(
+                        chatPresenceService.getLastSeen(userId)
+                )
+                .build();
     }
 
 }

@@ -31,7 +31,7 @@ spring:
 
 app:
   jwt:
-    access-token-expiry-minutes: 15
+    access-token-expiry-minutes: 60
     refresh-token-expiry-days: 30
     secret: change-this-to-a-long-secure-secret-key-at-least-64-bytes
 

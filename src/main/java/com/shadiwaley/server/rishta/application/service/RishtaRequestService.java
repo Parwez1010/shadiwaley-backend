@@ -325,4 +325,41 @@ public class RishtaRequestService {
         return rishtaRequestRepository.findById(requestId)
                 .orElseThrow(() -> new EntityNotFoundException("Rishta request not found"));
     }
+
+    @Transactional
+    public void cancel(UUID requestId) {
+
+        UUID currentUserId = AuthUser.getCurrentUserId();
+
+        RishtaRequest request = getRequest(requestId);
+
+        if (!request.getSenderUser().getId().equals(currentUserId)) {
+            throw new IllegalArgumentException("You are not allowed to cancel this request");
+        }
+
+        if (request.getStatus() != RishtaRequestStatus.PENDING) {
+            throw new IllegalArgumentException("Only pending requests can be cancelled");
+        }
+
+        request.setStatus(RishtaRequestStatus.CANCELLED);
+        request.setCancelledAt(Instant.now());
+
+        rishtaRequestRepository.save(request);
+
+        auditLogService.record(
+                AuditAction.RISHTA_REQUEST_CANCELLED,
+                AuditEntityType.RISHTA_REQUEST,
+                request.getId(),
+                "Rishta request cancelled"
+        );
+
+        notificationService.create(
+                request.getReceiverUser().getId(),
+                NotificationType.RISHTA_CANCELLED,
+                "Rishta request cancelled",
+                "A rishta request was cancelled by the sender.",
+                "/rishta/received",
+                request.getId()
+        );
+    }
 }

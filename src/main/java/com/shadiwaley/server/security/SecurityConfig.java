@@ -38,6 +38,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/onboarding/options").permitAll()
 
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/auth/login").permitAll()
+                        .requestMatchers("/api/v1/public/**").permitAll()
 
                         .requestMatchers(HttpMethod.GET, "/api/v1/subscriptions/plans").permitAll()
                         .requestMatchers("/actuator/health").permitAll()

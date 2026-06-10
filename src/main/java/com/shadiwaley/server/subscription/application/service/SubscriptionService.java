@@ -91,16 +91,38 @@ public class SubscriptionService {
     }
 
     @Transactional
-    public void validateFeatureAccess(UUID userId, SubscriptionFeature feature) {
+    public void validateFeatureAccess(
+            UUID userId,
+            SubscriptionFeature feature
+    ) {
         PlanDefinition plan = getCurrentPlanDefinition(userId);
         UserFeatureUsage usage = getMonthlyUsage(userId);
 
         switch (feature) {
-            case RISHTA_REQUEST -> validateRishtaRequestAccess(plan, usage);
 
-            case CHAT_ROOM -> validateChatRoomAccess(plan, usage);
+            /*
+             * Rishta requests are FREE for all registered users.
+             * Subscription plans are for CRM assistance,
+             * not for sending proposals.
+             */
+            case RISHTA_REQUEST -> {
+                return;
+            }
 
-            case PROFILE_VIEW -> validateProfileViewAccess(plan, usage);
+            /*
+             * Family chat is also FREE.
+             * Chat becomes available after proposal acceptance.
+             */
+            case CHAT_ROOM -> {
+                return;
+            }
+
+            /*
+             * Profile browsing is FREE.
+             */
+            case PROFILE_VIEW -> {
+                return;
+            }
 
             case PRIORITY_PROFILE_REVIEW -> {
                 if (!plan.priorityProfileReview()) {
@@ -135,6 +157,55 @@ public class SubscriptionService {
             }
         }
     }
+
+
+    // THIS IS FOR FUTURE FUNTIONALITIES SO DON"T DELETE THIS>>>>>>>>>>>>>>>>>>>>>>>>>
+
+//    @Transactional
+//    public void validateFeatureAccess(UUID userId, SubscriptionFeature feature) {
+//        PlanDefinition plan = getCurrentPlanDefinition(userId);
+//        UserFeatureUsage usage = getMonthlyUsage(userId);
+//
+//        switch (feature) {
+//            case RISHTA_REQUEST -> validateRishtaRequestAccess(plan, usage);
+//
+//            case CHAT_ROOM -> validateChatRoomAccess(plan, usage);
+//
+//            case PROFILE_VIEW -> validateProfileViewAccess(plan, usage);
+//
+//            case PRIORITY_PROFILE_REVIEW -> {
+//                if (!plan.priorityProfileReview()) {
+//                    throw new IllegalArgumentException(
+//                            "Priority profile review is not available in your current plan."
+//                    );
+//                }
+//            }
+//
+//            case AUTOPILOT_DISPATCH -> {
+//                if (!plan.autopilotDispatch()) {
+//                    throw new IllegalArgumentException(
+//                            "Autopilot dispatch is not available in your current plan."
+//                    );
+//                }
+//            }
+//
+//            case DEDICATED_CRM -> {
+//                if (!plan.dedicatedCrm()) {
+//                    throw new IllegalArgumentException(
+//                            "Dedicated CRM support is not available in your current plan."
+//                    );
+//                }
+//            }
+//
+//            case MEETING_COORDINATION -> {
+//                if (!plan.meetingCoordination()) {
+//                    throw new IllegalArgumentException(
+//                            "Meeting coordination is not available in your current plan."
+//                    );
+//                }
+//            }
+//        }
+//    }
 
     @Transactional
     public void incrementRishtaUsage(UUID userId) {

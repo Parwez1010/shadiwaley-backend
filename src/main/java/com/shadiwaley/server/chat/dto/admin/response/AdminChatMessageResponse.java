@@ -2,6 +2,7 @@ package com.shadiwaley.server.chat.dto.admin.response;
 
 import com.shadiwaley.server.chat.domain.ChatMessageType;
 import com.shadiwaley.server.chat.domain.ChatModerationStatus;
+import com.shadiwaley.server.chat.domain.ChatSenderType;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -35,6 +36,16 @@ public class AdminChatMessageResponse {
     private boolean reported;
     private boolean hidden;
     private boolean deleted;
+
+    private ChatSenderType senderType;
+
+    private UUID senderEmployeeId;
+
+    private String senderEmployeeName;
+
+    private UUID assistedUserId;
+
+    private String assistedFamilyName;
 
     private boolean readByOtherSide;
     private Instant readAt;

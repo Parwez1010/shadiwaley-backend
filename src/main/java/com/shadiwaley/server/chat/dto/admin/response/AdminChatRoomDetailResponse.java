@@ -36,6 +36,13 @@ public class AdminChatRoomDetailResponse {
         private ProposalStatus proposalStatus;
         private RishtaPipelineStage pipelineStage;
         private String pipelineStageLabel;
+        private String chatMode;
+
+        private Boolean boyHasCrmSupport;
+
+        private Boolean girlHasCrmSupport;
+
+        private String expectedSpeaker;
         private Instant createdAt;
         private Instant lastMessageAt;
     }

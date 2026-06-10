@@ -2,6 +2,7 @@ package com.shadiwaley.server.chat.dto.response;
 
 import com.shadiwaley.server.chat.domain.ChatDeliveryStatus;
 import com.shadiwaley.server.chat.domain.ChatMessageType;
+import com.shadiwaley.server.chat.domain.ChatSenderType;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -32,6 +33,13 @@ public class ChatMessageResponse {
     private boolean mine;
     private boolean edited;
     private boolean deleted;
+
+    private ChatSenderType senderType;
+    private UUID senderEmployeeId;
+    private String senderEmployeeName;
+    private UUID assistedUserId;
+    private String assistedFamilyName;
+
 
     private Instant sentAt;
     private Instant deliveredAt;
