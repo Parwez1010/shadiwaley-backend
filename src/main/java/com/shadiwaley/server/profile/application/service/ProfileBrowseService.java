@@ -1,5 +1,6 @@
 package com.shadiwaley.server.profile.application.service;
 
+import com.shadiwaley.server.customer.savedprofile.infrastructure.repository.SavedProfileRepository;
 import com.shadiwaley.server.matchmaking.application.service.MatchScoreService;
 import com.shadiwaley.server.media.domain.MediaReviewStatus;
 import com.shadiwaley.server.media.domain.MediaType;
@@ -16,6 +17,7 @@ import com.shadiwaley.server.profile.dto.response.ProfileCardResponse;
 import com.shadiwaley.server.profile.dto.response.ProfileDetailResponse;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
+import com.shadiwaley.server.rishta.infrastructure.repository.RishtaRequestRepository;
 import com.shadiwaley.server.security.AuthUser;
 import com.shadiwaley.server.subscription.application.service.SubscriptionService;
 import com.shadiwaley.server.subscription.domain.SubscriptionFeature;
@@ -33,7 +35,11 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -47,6 +53,9 @@ public class ProfileBrowseService {
     private final MatchScoreService matchScoreService;
     private final SubscriptionService subscriptionService;
 
+    private final RishtaRequestRepository rishtaRequestRepository;
+    private final SavedProfileRepository savedProfileRepository;
+
     @Transactional(readOnly = true)
     public BrowseProfilesResponse browse(BrowseProfileFilterRequest filter) {
         UUID viewerUserId = AuthUser.getCurrentUserId();
@@ -55,6 +64,13 @@ public class ProfileBrowseService {
         UserProfile viewerProfile = getViewerProfile(viewerUserId);
         ParentProfile viewerParent = getViewerParent(viewerUserId);
         UserPreferences viewerPreferences = getViewerPreferences(viewerProfile.getId());
+
+        Map<UUID, String> proposalStatusMap =
+                getProposalStatusMap(viewerUserId);
+
+        Set<UUID> savedProfileIds =
+                getSavedProfileIds(viewerUserId);
+
 
         int page = filter.getPage() == null ? 0 : Math.max(filter.getPage(), 0);
         int size = filter.getSize() == null ? 10 : Math.min(Math.max(filter.getSize(), 1), 50);
@@ -73,8 +89,14 @@ public class ProfileBrowseService {
         return BrowseProfilesResponse.builder()
                 .profiles(result.getContent()
                         .stream()
-                        .map(candidate -> toCard(viewerProfile, viewerParent, viewerPreferences, candidate))
-                        .toList())
+                        .map(candidate -> toCard(
+                                viewerProfile,
+                                viewerParent,
+                                viewerPreferences,
+                                candidate,
+                                proposalStatusMap,
+                                savedProfileIds
+                        )).toList())
                 .page(result.getNumber())
                 .size(result.getSize())
                 .totalElements(result.getTotalElements())
@@ -264,8 +286,10 @@ public class ProfileBrowseService {
             UserProfile viewerProfile,
             ParentProfile viewerParent,
             UserPreferences viewerPreferences,
-            UserProfile candidate
-    ) {
+            UserProfile candidate,
+            Map<UUID, String> proposalStatusMap,
+            Set<UUID> savedProfileIds
+    ){
         ParentProfile candidateParent = getViewerParent(candidate.getUserAccount().getId());
 
         MatchBreakdownResponse match = matchScoreService.calculate(
@@ -294,6 +318,12 @@ public class ProfileBrowseService {
                 .professionType(candidate.getProfessionType())
                 .professionTitle(candidate.getProfessionTitle())
                 .familyType(candidate.getFamilyType())
+                .proposalStatus(proposalStatusMap.get(candidate.getId()))
+                .houseType(candidate.getHouseType())
+                .mehrOffered(candidate.getMehrOffered())
+                .mehrMinimumExpected(candidate.getMehrMinimumExpected())
+                .expectationsText(candidate.getExpectationsText())
+                .saved(savedProfileIds.contains(candidate.getId()))
                 .hasApprovedPhoto(hasApprovedProfilePhoto(candidate.getId()))
                 .match(match)
                 .build();
@@ -332,5 +362,67 @@ public class ProfileBrowseService {
 
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProfileCardResponse> getTopMatches(int limit) {
+
+        BrowseProfileFilterRequest filter =
+                new BrowseProfileFilterRequest();
+
+        filter.setPage(0);
+        filter.setSize(limit);
+
+        BrowseProfilesResponse response = browse(filter);
+
+        return response.getProfiles();
+    }
+
+    private Map<UUID, String> getProposalStatusMap(UUID currentUserId) {
+
+        return rishtaRequestRepository
+                .findBySenderUserId(currentUserId)
+                .stream()
+                .collect(Collectors.toMap(
+                        request -> request.getReceiverProfile().getId(),
+                        request -> request.getStatus().name(),
+                        (a, b) -> a
+                ));
+    }
+
+    private Set<UUID> getSavedProfileIds(UUID userId) {
+
+        return savedProfileRepository
+                .findByUserAccountId(userId)
+                .stream()
+                .map(saved -> saved.getSavedProfile().getId())
+                .collect(Collectors.toSet());
+    }
+
+    @Transactional(readOnly = true)
+    public ProfileCardResponse getProfileCard(UUID profileId) {
+        UUID viewerUserId = AuthUser.getCurrentUserId();
+
+        UserProfile viewerProfile = getViewerProfile(viewerUserId);
+        ParentProfile viewerParent = getViewerParent(viewerUserId);
+        UserPreferences viewerPreferences = getViewerPreferences(viewerProfile.getId());
+
+        UserProfile candidate = userProfileRepository.findById(profileId)
+                .orElseThrow(() -> new EntityNotFoundException("Profile not found"));
+
+        Map<UUID, String> proposalStatusMap =
+                getProposalStatusMap(viewerUserId);
+
+        Set<UUID> savedProfileIds =
+                getSavedProfileIds(viewerUserId);
+
+        return toCard(
+                viewerProfile,
+                viewerParent,
+                viewerPreferences,
+                candidate,
+                proposalStatusMap,
+                savedProfileIds
+        );
     }
 }

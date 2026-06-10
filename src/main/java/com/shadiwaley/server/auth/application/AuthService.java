@@ -1,10 +1,14 @@
 package com.shadiwaley.server.auth.application;
 
+import com.shadiwaley.server.auth.dto.request.LogoutRequest;
 import com.shadiwaley.server.auth.dto.request.OtpInitiateRequest;
 import com.shadiwaley.server.auth.dto.request.OtpVerifyRequest;
+import com.shadiwaley.server.auth.dto.request.RefreshTokenRequest;
 import com.shadiwaley.server.auth.dto.response.OtpInitiateResponse;
 import com.shadiwaley.server.auth.dto.response.OtpVerifyResponse;
+import com.shadiwaley.server.auth.dto.response.RefreshTokenResponse;
 import com.shadiwaley.server.auth.infrastructure.entity.OtpSession;
+import com.shadiwaley.server.auth.infrastructure.entity.UserRefreshToken;
 import com.shadiwaley.server.auth.infrastructure.repository.OtpSessionRepository;
 import com.shadiwaley.server.autopilot.infrastructure.entity.AutopilotPreference;
 import com.shadiwaley.server.autopilot.infrastructure.repository.AutopilotPreferenceRepository;
@@ -21,6 +25,8 @@ import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepositor
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
@@ -41,6 +47,8 @@ public class AuthService {
     private final AutopilotPreferenceRepository autopilotPreferenceRepository;
     private final JwtService jwtService;
 
+    private final RefreshTokenService refreshTokenService;
+
     @Value("${app.otp.expiry-minutes}")
     private long otpExpiryMinutes;
 
@@ -53,15 +61,37 @@ public class AuthService {
     @Value("${app.otp.return-otp-in-response}")
     private boolean returnOtpInResponse;
 
+    @Value("${app.jwt.refresh-token-expiry-days:30}")
+    private long refreshTokenExpiryDays;
+
+    private final PasswordEncoder refreshTokenEncoder = new BCryptPasswordEncoder();
+
     public OtpInitiateResponse initiateOtp(OtpInitiateRequest request) {
         validateOtpRequestLimit(request.getPhone());
         validateResendCooldown(request.getPhone());
+
+        UserAccount existingUser = userAccountRepository
+                .findByPhone(request.getPhone())
+                .orElse(null);
+
+        if (existingUser == null && request.getSide() == null) {
+            throw new IllegalArgumentException("Side is required for new registration");
+        }
+
+        if (existingUser != null && !"ACTIVE".equalsIgnoreCase(existingUser.getAccountStatus())) {
+            throw new IllegalArgumentException("Account is not active");
+        }
+
 
         String otp = generateOtp();
 
         OtpSession session = new OtpSession();
         session.setPhone(request.getPhone());
-        session.setSide(request.getSide());
+        session.setSide(
+                existingUser != null
+                        ? existingUser.getSide()
+                        : request.getSide()
+        );
         session.setOtpCode(otp);
         session.setVerified(false);
         session.setAttemptCount(0);
@@ -181,7 +211,15 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
 
         String accessToken = jwtService.generateAccessToken(userAccount);
-        String refreshToken = UUID.randomUUID().toString();
+        String refreshToken =
+                refreshTokenService.createRefreshToken(
+                        userAccount,
+                        "unknown",
+                        "unknown"
+                );
+
+
+        userAccountRepository.save(userAccount);
 
         return OtpVerifyResponse.builder()
                 .accessToken(accessToken)
@@ -223,4 +261,50 @@ public class AuthService {
         String random = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
         return "#" + prefix + "-" + random;
     }
+
+    private String generateRefreshToken() {
+        return UUID.randomUUID() + "." + UUID.randomUUID();
+    }
+
+
+    @Transactional
+    public RefreshTokenResponse refresh(RefreshTokenRequest request) {
+
+        UserRefreshToken oldToken =
+                refreshTokenService.validateRefreshToken(
+                        request.getRefreshToken()
+                );
+
+        UserAccount userAccount = oldToken.getUserAccount();
+
+        if (!"ACTIVE".equalsIgnoreCase(userAccount.getAccountStatus())) {
+            throw new IllegalArgumentException("Account is not active");
+        }
+
+        String accessToken = jwtService.generateAccessToken(userAccount);
+
+        String refreshToken =
+                refreshTokenService.rotateRefreshToken(
+                        oldToken,
+                        "unknown",
+                        "unknown"
+                );
+
+        return RefreshTokenResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .build();
+    }
+
+    @Transactional
+    public void logout(LogoutRequest request) {
+        refreshTokenService.revokeToken(request.getRefreshToken());
+    }
+
+    @Transactional
+    public void logoutAllDevices() {
+        UUID userId = com.shadiwaley.server.security.AuthUser.getCurrentActorId();
+        refreshTokenService.revokeAllForUser(userId);
+    }
+
 }

@@ -4,6 +4,7 @@ import com.shadiwaley.server.chat.application.service.AdminChatMonitorService;
 import com.shadiwaley.server.chat.domain.ChatRoomStatus;
 import com.shadiwaley.server.chat.dto.admin.request.*;
 import com.shadiwaley.server.chat.dto.admin.response.*;
+import com.shadiwaley.server.chat.dto.response.ChatMessageResponse;
 import com.shadiwaley.server.common.response.ApiResponse;
 import com.shadiwaley.server.common.response.ResponseFactory;
 import jakarta.validation.Valid;
@@ -255,6 +256,17 @@ public class AdminChatMonitorController {
         return ResponseFactory.success(
                 "Chat follow-ups fetched successfully",
                 adminChatMonitorService.getFollowUps(roomId, page, size)
+        );
+    }
+
+    @PostMapping("/rooms/{roomId}/messages")
+    public ApiResponse<ChatMessageResponse> sendCrmMessage(
+            @PathVariable UUID roomId,
+            @Valid @RequestBody AdminSendChatMessageRequest request
+    ) {
+        return ResponseFactory.success(
+                "CRM message sent successfully",
+                adminChatMonitorService.sendCrmMessage(roomId, request)
         );
     }
 

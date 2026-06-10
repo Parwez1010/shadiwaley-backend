@@ -21,5 +21,7 @@ public enum NotificationType {
     PROFILE_MILESTONE_EARNED,
     INVESTMENT_DECAY,
 
-    SYSTEM_MESSAGE
+    SYSTEM_MESSAGE,
+
+    RISHTA_CANCELLED,
 }

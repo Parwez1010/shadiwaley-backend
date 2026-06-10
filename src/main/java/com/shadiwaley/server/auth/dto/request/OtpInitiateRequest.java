@@ -13,6 +13,5 @@ public class OtpInitiateRequest {
     @Pattern(regexp = "^[6-9]\\d{9}$", message = "Phone must be valid 10 digit Indian mobile number")
     private String phone;
 
-    @NotNull(message = "Side is required")
     private UserSide side;
 }

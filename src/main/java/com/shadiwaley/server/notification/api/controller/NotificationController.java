@@ -25,7 +25,9 @@ public class NotificationController {
     }
 
     @PatchMapping("/{notificationId}/read")
-    public ApiResponse<Void> markAsRead(@PathVariable UUID notificationId) {
+    public ApiResponse<Void> markAsRead(
+            @PathVariable UUID notificationId
+    ) {
         notificationService.markAsRead(notificationId);
 
         return ResponseFactory.success(

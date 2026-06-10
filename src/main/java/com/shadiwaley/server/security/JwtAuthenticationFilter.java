@@ -32,6 +32,7 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
 
         return path.startsWith("/api/v1/auth/")
                 || path.startsWith("/api/v1/admin/auth/")
+                || path.startsWith("/api/v1/public/")
                 || path.equals("/actuator/health");
     }
 

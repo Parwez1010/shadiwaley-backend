@@ -75,6 +75,10 @@ public class FamilyChatRoom {
     @Column(nullable = false, length = 30)
     private ChatRoomStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "chat_mode", nullable = false, length = 40)
+    private com.shadiwaley.server.chat.domain.ChatMode chatMode;
+
     @Column(name = "created_at")
     private Instant createdAt;
 
@@ -104,6 +108,9 @@ public class FamilyChatRoom {
         }
         if (messageCount < 0) {
             messageCount = 0;
+        }
+        if (chatMode == null) {
+            chatMode = com.shadiwaley.server.chat.domain.ChatMode.DIRECT_FAMILY;
         }
 
         createdAt = now;

@@ -21,6 +21,14 @@ public class ChatRoomResponse {
 
     private ChatRoomStatus status;
 
+    private String chatMode;
+
+    private Boolean boyHasCrmSupport;
+
+    private Boolean girlHasCrmSupport;
+
+    private String expectedSpeaker;
+
     private String lastMessage;
     private Instant lastMessageAt;
 

@@ -3,6 +3,8 @@ package com.shadiwaley.server.chat.infrastructure.entity;
 import com.shadiwaley.server.chat.domain.ChatDeliveryStatus;
 import com.shadiwaley.server.chat.domain.ChatMessageType;
 import com.shadiwaley.server.chat.domain.ChatModerationStatus;
+import com.shadiwaley.server.chat.domain.ChatSenderType;
+import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import jakarta.persistence.*;
@@ -69,6 +71,21 @@ public class FamilyChatMessage {
     @Column(name = "moderation_status", length = 30)
     private ChatModerationStatus moderationStatus;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "sender_type", nullable = false, length = 30)
+    private ChatSenderType senderType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sender_employee_id")
+    private EmployeeAccount senderEmployee;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assisted_user_id")
+    private UserAccount assistedUser;
+
+    @Column(name = "assisted_family_name", length = 150)
+    private String assistedFamilyName;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -88,6 +105,9 @@ public class FamilyChatMessage {
 
         if (sentAt == null) {
             sentAt = Instant.now();
+        }
+        if (senderType == null) {
+            senderType = ChatSenderType.CUSTOMER;
         }
         if (moderationStatus == null) {
             moderationStatus = ChatModerationStatus.CLEAN;

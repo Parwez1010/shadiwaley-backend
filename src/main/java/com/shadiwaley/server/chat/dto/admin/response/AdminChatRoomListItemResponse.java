@@ -50,6 +50,14 @@ public class AdminChatRoomListItemResponse {
     private boolean needsAttention;
     private boolean blocked;
 
+    private String chatMode;
+
+    private Boolean boyHasCrmSupport;
+
+    private Boolean girlHasCrmSupport;
+
+    private String expectedSpeaker;
+
     private Integer matchScore;
     private ProposalStatus proposalStatus;
     private RishtaPipelineStage pipelineStage;

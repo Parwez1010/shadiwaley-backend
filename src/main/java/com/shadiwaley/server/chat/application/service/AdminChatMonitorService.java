@@ -3,11 +3,12 @@ package com.shadiwaley.server.chat.application.service;
 import com.shadiwaley.server.audit.application.service.AuditLogService;
 import com.shadiwaley.server.audit.domain.AuditAction;
 import com.shadiwaley.server.audit.domain.AuditEntityType;
-import com.shadiwaley.server.chat.domain.ChatFamilyDecision;
-import com.shadiwaley.server.chat.domain.ChatModerationStatus;
-import com.shadiwaley.server.chat.domain.ChatRoomStatus;
+import com.shadiwaley.server.chat.domain.*;
 import com.shadiwaley.server.chat.dto.admin.request.*;
 import com.shadiwaley.server.chat.dto.admin.response.*;
+import com.shadiwaley.server.chat.dto.response.ChatMessageResponse;
+import com.shadiwaley.server.chat.dto.websocket.AdminChatMonitorEvent;
+import com.shadiwaley.server.chat.dto.websocket.ChatWebSocketEvent;
 import com.shadiwaley.server.chat.infrastructure.entity.*;
 import com.shadiwaley.server.chat.infrastructure.repository.*;
 import com.shadiwaley.server.crm.domain.*;
@@ -18,6 +19,8 @@ import com.shadiwaley.server.employee.infrastructure.repository.EmployeeAccountR
 import com.shadiwaley.server.media.domain.MediaType;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
 import com.shadiwaley.server.media.infrastructure.repository.MediaFileRepository;
+import com.shadiwaley.server.notification.application.service.NotificationService;
+import com.shadiwaley.server.notification.domain.NotificationType;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
@@ -29,11 +32,16 @@ import com.shadiwaley.server.rishtapipeline.application.service.RishtaPipelineSt
 import com.shadiwaley.server.rishtapipeline.domain.RishtaPipelineStage;
 import com.shadiwaley.server.rishtapipeline.infrastructure.entity.RishtaPipelineNote;
 import com.shadiwaley.server.rishtapipeline.infrastructure.repository.RishtaPipelineNoteRepository;
+import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
+import com.shadiwaley.server.subscription.infrastructure.repository.SubscriptionRepository;
+import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
+import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,6 +77,13 @@ public class AdminChatMonitorService {
     private final RishtaPipelineNoteRepository rishtaPipelineNoteRepository;
 
     private final AuditLogService auditLogService;
+
+    private final UserAccountRepository userAccountRepository;
+    private final NotificationService notificationService;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final SubscriptionRepository subscriptionRepository;
+    private final AdminChatMonitorEventPublisher adminChatMonitorEventPublisher;
+
 
     @Transactional(readOnly = true)
     public AdminChatMonitorSummaryResponse getSummary(
@@ -349,6 +364,15 @@ public class AdminChatMonitorService {
         RishtaPipelineStage pipelineStage = proposal != null
                 ? stageResolver.resolve(proposal.getStatus())
                 : null;
+        boolean boyHasCrmSupport =
+                hasCrmSupportPlan(room.getBoyUser().getId());
+
+        boolean girlHasCrmSupport =
+                hasCrmSupportPlan(room.getGirlUser().getId());
+
+        String expectedSpeaker =
+                resolveAdminExpectedSpeaker(room, boyHasCrmSupport, girlHasCrmSupport);
+
 
         return AdminChatRoomListItemResponse.builder()
                 .roomId(room.getId())
@@ -362,6 +386,12 @@ public class AdminChatMonitorService {
                 .fromPhone(fromProfile != null && fromProfile.getUserAccount() != null ? fromProfile.getUserAccount().getPhone() : null)
                 .fromSide(fromProfile != null && fromProfile.getUserAccount() != null && fromProfile.getUserAccount().getSide() != null ? fromProfile.getUserAccount().getSide().name() : null)
                 .fromDistrict(fromParent != null ? fromParent.getDistrict() : null)
+
+                .chatMode(room.getChatMode() != null ? room.getChatMode().name() : null)
+                .boyHasCrmSupport(boyHasCrmSupport)
+                .girlHasCrmSupport(girlHasCrmSupport)
+                .expectedSpeaker(expectedSpeaker)
+
 
                 .toProfileId(toProfile != null ? toProfile.getId() : null)
                 .toCandidateName(toProfile != null ? toProfile.getCandidateFirstName() : null)
@@ -454,6 +484,14 @@ public class AdminChatMonitorService {
                         .matchScore(proposal != null ? proposal.getMatchScore() : null)
                         .proposalStatus(proposal != null ? proposal.getStatus() : null)
                         .pipelineStage(pipelineStage)
+                        .chatMode(room.getChatMode() != null ? room.getChatMode().name() : null)
+                        .boyHasCrmSupport(hasCrmSupportPlan(room.getBoyUser().getId()))
+                        .girlHasCrmSupport(hasCrmSupportPlan(room.getGirlUser().getId()))
+                        .expectedSpeaker(resolveAdminExpectedSpeaker(
+                                room,
+                                hasCrmSupportPlan(room.getBoyUser().getId()),
+                                hasCrmSupportPlan(room.getGirlUser().getId())
+                        ))
                         .pipelineStageLabel(pipelineStage != null ? stageResolver.label(pipelineStage) : null)
                         .createdAt(room.getCreatedAt())
                         .lastMessageAt(room.getLastMessageAt())
@@ -617,8 +655,12 @@ public class AdminChatMonitorService {
                 .roomId(message.getRoom().getId())
                 .senderUserId(message.getSenderUser().getId())
                 .senderProfileId(senderProfile != null ? senderProfile.getId() : null)
-                .senderName(senderProfile != null ? senderProfile.getCandidateFirstName() : "Family")
-                .senderRole("PARENT")
+                .senderName(resolveAdminSenderName(message, senderProfile))
+                .senderRole(
+                        message.getSenderType() != null
+                                ? message.getSenderType().name()
+                                : "CUSTOMER"
+                )
                 .senderSide(senderSide)
                 .messageType(message.getMessageType())
                 .text(message.getContent())
@@ -637,6 +679,22 @@ public class AdminChatMonitorService {
                 .readAt(message.getReadAt())
                 .createdAt(message.getSentAt())
                 .updatedAt(message.getEditedAt() != null ? message.getEditedAt() : message.getSentAt())
+                .senderType(message.getSenderType())
+
+                .senderEmployeeId(message.getSenderEmployee() != null
+                        ? message.getSenderEmployee().getId()
+                        : null)
+
+                .senderEmployeeName(message.getSenderEmployee() != null
+                        ? message.getSenderEmployee().getFullName()
+                        : null)
+
+                .assistedUserId(message.getAssistedUser() != null
+                        ? message.getAssistedUser().getId()
+                        : null)
+
+                .assistedFamilyName(message.getAssistedFamilyName())
+
                 .build();
     }
 
@@ -1363,4 +1421,303 @@ public class AdminChatMonitorService {
                 .createdAt(log.getCreatedAt())
                 .build();
     }
+
+    @Transactional
+    public ChatMessageResponse sendCrmMessage(
+            UUID roomId,
+            AdminSendChatMessageRequest request
+    ) {
+        FamilyChatRoom room = getRoomOrThrow(roomId);
+
+        permissionService.assertCanUpdateRoom(room);
+
+        if (room.isBlocked()) {
+            throw new IllegalArgumentException("This chat room is blocked");
+        }
+
+        if (room.getStatus() != ChatRoomStatus.ACTIVE
+                && room.getStatus() != ChatRoomStatus.NEEDS_CRM_ATTENTION
+                && room.getStatus() != ChatRoomStatus.PENDING_RESPONSE) {
+            throw new IllegalArgumentException("This chat room is not open for messaging");
+        }
+
+        EmployeeAccount employee = permissionService.getCurrentEmployee();
+
+        UserAccount assistedUser = null;
+
+        if (request.getAssistedUserId() != null) {
+            assistedUser = userAccountRepository.findById(request.getAssistedUserId())
+                    .orElseThrow(() -> new EntityNotFoundException("Assisted user not found"));
+
+            boolean belongsToRoom =
+                    room.getBoyUser().getId().equals(assistedUser.getId())
+                            || room.getGirlUser().getId().equals(assistedUser.getId());
+
+            if (!belongsToRoom) {
+                throw new IllegalArgumentException("Assisted user does not belong to this chat room");
+            }
+        }
+
+        MediaFile media = null;
+
+        if (request.getMediaFileId() != null) {
+            media = mediaFileRepository.findById(request.getMediaFileId())
+                    .orElseThrow(() -> new EntityNotFoundException("Media file not found"));
+        }
+
+        FamilyChatMessage replyTo = null;
+
+        if (request.getReplyToMessageId() != null) {
+            replyTo = chatMessageRepository.findById(request.getReplyToMessageId())
+                    .orElseThrow(() -> new EntityNotFoundException("Reply message not found"));
+
+            if (!replyTo.getRoom().getId().equals(roomId)) {
+                throw new IllegalArgumentException("Reply message does not belong to this chat room");
+            }
+        }
+
+        FamilyChatMessage message = new FamilyChatMessage();
+        message.setRoom(room);
+
+        /*
+         * CRM message is not pretending to be a family.
+         * senderUser is assisted user only for room-side context.
+         */
+        message.setSenderUser(
+                assistedUser != null
+                        ? assistedUser
+                        : room.getBoyUser()
+        );
+
+        message.setSenderType(ChatSenderType.CRM);
+        message.setSenderEmployee(employee);
+        message.setAssistedUser(assistedUser);
+        message.setAssistedFamilyName(
+                assistedUser != null
+                        ? resolveFamilyDisplayName(assistedUser.getId())
+                        : null
+        );
+
+        message.setMessageType(
+                request.getMessageType() != null
+                        ? request.getMessageType()
+                        : ChatMessageType.TEXT
+        );
+        message.setContent(request.getContent());
+        message.setMediaFile(media);
+        message.setReplyToMessage(replyTo);
+        message.setDeliveryStatus(ChatDeliveryStatus.SENT);
+        message.setDeliveredAt(Instant.now());
+
+        FamilyChatMessage saved = chatMessageRepository.save(message);
+
+        updateRoomReadModelAfterCrmMessage(room, saved, employee);
+        chatRoomRepository.save(room);
+
+        ChatMessageResponse response = toAdminVisibleCustomerMessage(saved);
+
+        publishRoomEvent(
+                roomId,
+                ChatSocketEventType.CRM_ASSISTED_MESSAGE,
+                response
+        );
+
+        adminChatMonitorEventPublisher.publish(
+                AdminChatMonitorEvent.builder()
+                        .event(ChatSocketEventType.ADMIN_CRM_MESSAGE_SENT)
+                        .roomId(room.getId())
+                        .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                        .title("CRM message sent")
+                        .message("A CRM-assisted message was sent.")
+                        .emittedAt(Instant.now())
+                        .build()
+        );
+
+        notifyRoomFamilies(room);
+
+        auditLogService.record(
+                AuditAction.CHAT_MESSAGE_SENT_BY_CRM,
+                AuditEntityType.CHAT_MESSAGE,
+                saved.getId(),
+                "CRM message sent by " + employee.getFullName()
+        );
+
+        return response;
+    }
+
+    private void updateRoomReadModelAfterCrmMessage(
+            FamilyChatRoom room,
+            FamilyChatMessage message,
+            EmployeeAccount employee
+    ) {
+        room.setLastMessageText(preview(message.getContent()));
+        room.setLastMessageType(message.getMessageType());
+        room.setLastMessageAt(message.getSentAt());
+        room.setLastMessageByName(employee.getFullName());
+        room.setMessageCount(room.getMessageCount() + 1);
+        room.setNeedsAttention(false);
+        room.setUpdatedAt(Instant.now());
+    }
+
+    private ChatMessageResponse toAdminVisibleCustomerMessage(FamilyChatMessage message) {
+        return ChatMessageResponse.builder()
+                .messageId(message.getId())
+                .roomId(message.getRoom().getId())
+
+                .senderUserId(message.getSenderUser() != null ? message.getSenderUser().getId() : null)
+                .senderDisplayName(message.getSenderEmployee() != null
+                        ? message.getSenderEmployee().getFullName()
+                        : "CRM")
+
+                .senderType(message.getSenderType())
+
+                .senderEmployeeId(message.getSenderEmployee() != null
+                        ? message.getSenderEmployee().getId()
+                        : null)
+
+                .senderEmployeeName(message.getSenderEmployee() != null
+                        ? message.getSenderEmployee().getFullName()
+                        : null)
+
+                .assistedUserId(message.getAssistedUser() != null
+                        ? message.getAssistedUser().getId()
+                        : null)
+
+                .assistedFamilyName(message.getAssistedFamilyName())
+
+                .messageType(message.getMessageType())
+                .content(message.getContent())
+
+                .mediaFileId(message.getMediaFile() != null ? message.getMediaFile().getId() : null)
+                .mediaType(message.getMediaFile() != null ? message.getMediaFile().getMediaType().name() : null)
+
+                .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
+                .replyPreview(message.getReplyToMessage() != null ? preview(message.getReplyToMessage().getContent()) : null)
+
+                .deliveryStatus(message.getDeliveryStatus())
+                .mine(false)
+                .edited(message.getEditedAt() != null)
+                .deleted(message.getDeletedAt() != null)
+
+                .sentAt(message.getSentAt())
+                .deliveredAt(message.getDeliveredAt())
+                .readAt(message.getReadAt())
+                .editedAt(message.getEditedAt())
+                .deletedAt(message.getDeletedAt())
+                .build();
+    }
+
+    private void publishRoomEvent(
+            UUID roomId,
+            String event,
+            Object payload
+    ) {
+        messagingTemplate.convertAndSend(
+                "/topic/chat.room." + roomId,
+                ChatWebSocketEvent.builder()
+                        .event(event)
+                        .roomId(roomId)
+                        .payload(payload)
+                        .emittedAt(Instant.now())
+                        .build()
+        );
+    }
+
+    private void notifyRoomFamilies(FamilyChatRoom room) {
+        notificationService.create(
+                room.getBoyUser().getId(),
+                NotificationType.CHAT_OPENED,
+                "CRM message received",
+                "Your CRM assistant sent a message in family chat.",
+                "/chat/" + room.getId(),
+                room.getId()
+        );
+
+        notificationService.create(
+                room.getGirlUser().getId(),
+                NotificationType.CHAT_OPENED,
+                "CRM message received",
+                "Your CRM assistant sent a message in family chat.",
+                "/chat/" + room.getId(),
+                room.getId()
+        );
+    }
+
+    private String preview(String content) {
+        if (content == null) return null;
+        return content.length() <= 80 ? content : content.substring(0, 80) + "...";
+    }
+
+    private String resolveFamilyDisplayName(UUID userId) {
+        return userProfileRepository.findByUserAccountId(userId)
+                .map(UserProfile::getCandidateFirstName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("Family");
+    }
+
+    private String resolveAdminSenderName(
+            FamilyChatMessage message,
+            UserProfile senderProfile
+    ) {
+        if (message.getSenderType() == ChatSenderType.CRM) {
+            return message.getSenderEmployee() != null
+                    ? message.getSenderEmployee().getFullName()
+                    : "CRM";
+        }
+
+        if (message.getSenderType() == ChatSenderType.SYSTEM) {
+            return "System";
+        }
+
+        return senderProfile != null && senderProfile.getCandidateFirstName() != null
+                ? senderProfile.getCandidateFirstName()
+                : "Family";
+    }
+
+    private boolean hasCrmSupportPlan(UUID userId) {
+
+        return subscriptionRepository
+                .findTopByUserAccountIdAndStatusOrderByCreatedAtDesc(
+                        userId,
+                        SubscriptionStatus.ACTIVE
+                )
+                .filter(subscription ->
+                        subscription.getExpiresAt() == null
+                                || subscription.getExpiresAt().isAfter(Instant.now())
+                )
+                .map(subscription ->
+                        switch (subscription.getPlanType()) {
+                            case BASIC_299, PREMIUM_999, ELITE_2499 -> true;
+                            case FREE_ONBOARDING -> false;
+                        }
+                )
+                .orElse(false);
+    }
+
+    private String resolveAdminExpectedSpeaker(
+            FamilyChatRoom room,
+            boolean boyHasCrmSupport,
+            boolean girlHasCrmSupport
+    ) {
+        if (room.getChatMode() == ChatMode.DIRECT_FAMILY) {
+            return "FAMILY_TO_FAMILY";
+        }
+
+        if (room.getChatMode() == ChatMode.CRM_TO_CRM) {
+            return "CRM_TO_CRM";
+        }
+
+        if (boyHasCrmSupport && !girlHasCrmSupport) {
+            return "BOY_CRM_TO_GIRL_FAMILY";
+        }
+
+        if (!boyHasCrmSupport && girlHasCrmSupport) {
+            return "GIRL_CRM_TO_BOY_FAMILY";
+        }
+
+        return "CRM_ASSISTED";
+    }
+
 }

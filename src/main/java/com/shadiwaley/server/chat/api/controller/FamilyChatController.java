@@ -127,4 +127,16 @@ public class FamilyChatController {
         );
     }
 
+    @GetMapping("/presence/{userId}")
+    public ApiResponse<ChatPresenceResponse> getPresence(
+            @PathVariable UUID userId
+    ) {
+        return ResponseFactory.success(
+                "Presence fetched successfully",
+                familyChatService.getPresence(userId)
+        );
+    }
+
+
+
 }
