@@ -7,6 +7,7 @@ import com.shadiwaley.server.common.response.ApiResponse;
 import com.shadiwaley.server.common.response.ResponseFactory;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -135,6 +136,15 @@ public class FamilyChatController {
                 "Presence fetched successfully",
                 familyChatService.getPresence(userId)
         );
+    }
+
+    @GetMapping("/rooms/{roomId}/messages/{messageId}/media/{mediaId}/view")
+    public ResponseEntity<byte[]> viewChatMedia(
+            @PathVariable UUID roomId,
+            @PathVariable UUID messageId,
+            @PathVariable UUID mediaId
+    ) {
+        return familyChatService.viewChatMedia(roomId, messageId, mediaId);
     }
 
 

@@ -1,4 +1,4 @@
-package com.shadiwaley.server.notification.dto.response;
+package com.shadiwaley.server.support.dto.response;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -7,9 +7,9 @@ import java.util.List;
 
 @Getter
 @Builder
-public class NotificationListResponse {
+public class SupportTicketPageResponse {
 
-    private long unreadCount;
+    private List<SupportTicketResponse> items;
 
     private int page;
 
@@ -20,6 +20,4 @@ public class NotificationListResponse {
     private int totalPages;
 
     private boolean last;
-
-    private List<NotificationResponse> notifications;
 }

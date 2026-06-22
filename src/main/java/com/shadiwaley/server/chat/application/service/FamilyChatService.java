@@ -12,6 +12,7 @@ import com.shadiwaley.server.chat.dto.websocket.AdminChatMonitorEvent;
 import com.shadiwaley.server.chat.dto.websocket.ChatWebSocketEvent;
 import com.shadiwaley.server.chat.infrastructure.entity.*;
 import com.shadiwaley.server.chat.infrastructure.repository.*;
+import com.shadiwaley.server.media.application.storage.FileStorageService;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
 import com.shadiwaley.server.media.infrastructure.repository.MediaFileRepository;
 import com.shadiwaley.server.notification.application.service.NotificationService;
@@ -32,8 +33,12 @@ import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,6 +64,7 @@ public class FamilyChatService {
 
     private final SubscriptionRepository subscriptionRepository;
     private final AdminChatMonitorEventPublisher adminChatMonitorEventPublisher;
+    private final FileStorageService fileStorageService;
 
 
     @Transactional
@@ -581,6 +587,32 @@ public class FamilyChatService {
                 .mediaType(message.getMediaFile() != null
                         ? message.getMediaFile().getMediaType().name()
                         : null)
+                .mediaPreviewUrl(
+                        message.getMediaFile() != null
+                                ? "/api/v1/chat/rooms/"
+                                + message.getRoom().getId()
+                                + "/messages/"
+                                + message.getId()
+                                + "/media/"
+                                + message.getMediaFile().getId()
+                                + "/view"
+                                : null
+                )
+                .fileName(
+                        message.getMediaFile() != null
+                                ? message.getMediaFile().getOriginalFileName()
+                                : null
+                )
+                .fileSizeBytes(
+                        message.getMediaFile() != null
+                                ? message.getMediaFile().getFileSizeBytes()
+                                : null
+                )
+                .contentType(
+                        message.getMediaFile() != null
+                                ? message.getMediaFile().getContentType()
+                                : null
+                )
                 .replyToMessageId(reply != null ? reply.getId() : null)
                 .replyPreview(reply != null ? preview(reply.getContent()) : null)
                 .deliveryStatus(message.getDeliveryStatus())
@@ -857,6 +889,59 @@ public class FamilyChatService {
                         chatPresenceService.getLastSeen(userId)
                 )
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> viewChatMedia(
+            UUID roomId,
+            UUID messageId,
+            UUID mediaId
+    ) {
+        UUID currentUserId = AuthUser.getCurrentUserId();
+
+        FamilyChatRoom room = getAuthorizedRoom(roomId, currentUserId);
+
+        FamilyChatMessage message = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new EntityNotFoundException("Message not found"));
+
+        if (!message.getRoom().getId().equals(room.getId())) {
+            throw new AccessDeniedException("Message does not belong to this chat room");
+        }
+
+        if (message.getMediaFile() == null
+                || !message.getMediaFile().getId().equals(mediaId)) {
+            throw new EntityNotFoundException("Media not found for this message");
+        }
+
+        MediaFile media = message.getMediaFile();
+
+        if (media.isDeleted()) {
+            throw new EntityNotFoundException("Media file not found");
+        }
+
+        byte[] bytes = fileStorageService.load(media.getStorageKey());
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(media.getContentType()))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + media.getOriginalFileName() + "\""
+                )
+                .body(bytes);
+    }
+    private void assertRoomParticipant(
+            FamilyChatRoom room,
+            UUID userId
+    ) {
+        boolean participant =
+                room.getBoyUser().getId().equals(userId)
+                        || room.getGirlUser().getId().equals(userId);
+
+        if (!participant) {
+            throw new AccessDeniedException(
+                    "You are not allowed to access this chat room"
+            );
+        }
     }
 
 }

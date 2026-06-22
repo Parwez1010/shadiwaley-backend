@@ -5,5 +5,8 @@ public enum MediaType {
     GALLERY_PHOTO,
     ID_PROOF,
     INCOME_PROOF,
-    OTHER
+    OTHER,
+
+    CHAT_IMAGE,
+    CHAT_DOCUMENT
 }

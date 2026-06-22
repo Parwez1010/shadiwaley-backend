@@ -6,9 +6,7 @@ import com.shadiwaley.server.media.application.service.MediaService;
 import com.shadiwaley.server.media.domain.MediaType;
 import com.shadiwaley.server.media.domain.WhatsappConsent;
 import com.shadiwaley.server.media.dto.request.UpdateConsentRequest;
-import com.shadiwaley.server.media.dto.response.GroupedMediaResponse;
-import com.shadiwaley.server.media.dto.response.MediaUploadResponse;
-import com.shadiwaley.server.media.dto.response.MediaViewResponse;
+import com.shadiwaley.server.media.dto.response.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -102,6 +100,24 @@ public class MediaController {
                 )
                 .contentType(org.springframework.http.MediaType.parseMediaType(response.getContentType()))
                 .body(response.getContent());
+    }
+
+    @GetMapping("/options")
+    public ApiResponse<MediaOptionsResponse> getOptions() {
+
+        return ResponseFactory.success(
+                "Media options fetched successfully",
+                mediaService.getOptions()
+        );
+    }
+
+    @GetMapping("/summary")
+    public ApiResponse<MediaSummaryResponse> getSummary() {
+
+        return ResponseFactory.success(
+                "Media summary fetched successfully",
+                mediaService.getSummary()
+        );
     }
 
 }

@@ -7,9 +7,7 @@ import com.shadiwaley.server.media.domain.MediaReviewStatus;
 import com.shadiwaley.server.media.domain.MediaType;
 import com.shadiwaley.server.media.domain.MediaVisibility;
 import com.shadiwaley.server.media.domain.WhatsappConsent;
-import com.shadiwaley.server.media.dto.response.GroupedMediaResponse;
-import com.shadiwaley.server.media.dto.response.MediaUploadResponse;
-import com.shadiwaley.server.media.dto.response.MediaViewResponse;
+import com.shadiwaley.server.media.dto.response.*;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
 import com.shadiwaley.server.media.infrastructure.repository.MediaFileRepository;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
@@ -32,6 +30,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -296,13 +295,15 @@ public class MediaService {
 
     private boolean isPhoto(MediaType mediaType) {
         return mediaType == MediaType.PROFILE_PHOTO
-                || mediaType == MediaType.GALLERY_PHOTO;
+                || mediaType == MediaType.GALLERY_PHOTO
+                || mediaType == MediaType.CHAT_IMAGE;
     }
 
     private boolean isDocument(MediaType mediaType) {
         return mediaType == MediaType.ID_PROOF
                 || mediaType == MediaType.INCOME_PROOF
-                || mediaType == MediaType.OTHER;
+                || mediaType == MediaType.OTHER
+                || mediaType == MediaType.CHAT_DOCUMENT;
     }
 
     private WhatsappConsent resolveConsent(MediaType mediaType, WhatsappConsent consent) {
@@ -359,6 +360,19 @@ public class MediaService {
                 .reviewStatus(mediaFile.getReviewStatus())
 
                 .rejectedReason(null)
+                .mimeType(mediaFile.getContentType())
+
+                .originalFileName(mediaFile.getOriginalFileName())
+
+                .fileSize(mediaFile.getFileSizeBytes())
+
+                .approvalStatus(mediaFile.getReviewStatus())
+
+                .previewUrl(
+                        "/api/v1/media/" +
+                                mediaFile.getId() +
+                                "/view"
+                )
 
                 .adminPreviewUrl(
                         "/api/v1/admin/crm/families/"
@@ -625,8 +639,92 @@ public class MediaService {
             case GALLERY_PHOTO -> "families/" + userId + "/gallery";
             case ID_PROOF -> "families/" + userId + "/id-proofs";
             case INCOME_PROOF -> "families/" + userId + "/income-proofs";
+            case CHAT_IMAGE -> "families/" + userId + "/chat/images";
+            case CHAT_DOCUMENT -> "families/" + userId + "/chat/documents";
             case OTHER -> "families/" + userId + "/other";
         };
+    }
+
+    public MediaOptionsResponse getOptions() {
+
+        return MediaOptionsResponse.builder()
+                .mediaTypes(
+                        Arrays.stream(MediaType.values())
+                                .map(Enum::name)
+                                .toList()
+                )
+                .whatsappConsents(
+                        Arrays.stream(WhatsappConsent.values())
+                                .map(Enum::name)
+                                .toList()
+                )
+                .mediaVisibilities(
+                        Arrays.stream(MediaVisibility.values())
+                                .map(Enum::name)
+                                .toList()
+                )
+                .reviewStatuses(
+                        Arrays.stream(MediaReviewStatus.values())
+                                .map(Enum::name)
+                                .toList()
+                )
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public MediaSummaryResponse getSummary() {
+        UUID userId = AuthUser.getCurrentUserId();
+
+        List<MediaFile> files =
+                mediaFileRepository.findByUserAccountIdAndDeletedFalseOrderByCreatedAtDesc(userId);
+
+        long profilePhotos = files.stream()
+                .filter(file -> file.getMediaType() == MediaType.PROFILE_PHOTO)
+                .count();
+
+        long galleryPhotos = files.stream()
+                .filter(file -> file.getMediaType() == MediaType.GALLERY_PHOTO)
+                .count();
+
+        long documents = files.stream()
+                .filter(file ->
+                        file.getMediaType() == MediaType.ID_PROOF
+                                || file.getMediaType() == MediaType.INCOME_PROOF
+                                || file.getMediaType() == MediaType.OTHER
+                )
+                .count();
+
+        long chatImages = files.stream()
+                .filter(file -> file.getMediaType() == MediaType.CHAT_IMAGE)
+                .count();
+
+        long chatDocuments = files.stream()
+                .filter(file -> file.getMediaType() == MediaType.CHAT_DOCUMENT)
+                .count();
+
+        long pendingReview = files.stream()
+                .filter(file -> file.getReviewStatus() == MediaReviewStatus.PENDING_REVIEW)
+                .count();
+
+        long approved = files.stream()
+                .filter(file -> file.getReviewStatus() == MediaReviewStatus.APPROVED)
+                .count();
+
+        long rejected = files.stream()
+                .filter(file -> file.getReviewStatus() == MediaReviewStatus.REJECTED)
+                .count();
+
+        return MediaSummaryResponse.builder()
+                .totalFiles((long) files.size())
+                .profilePhotos(profilePhotos)
+                .galleryPhotos(galleryPhotos)
+                .documents(documents)
+                .chatImages(chatImages)
+                .chatDocuments(chatDocuments)
+                .pendingReview(pendingReview)
+                .approved(approved)
+                .rejected(rejected)
+                .build();
     }
 
 
