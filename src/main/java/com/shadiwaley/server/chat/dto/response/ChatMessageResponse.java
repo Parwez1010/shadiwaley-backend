@@ -25,6 +25,11 @@ public class ChatMessageResponse {
     private UUID mediaFileId;
     private String mediaType;
 
+    private String mediaPreviewUrl;
+    private String fileName;
+    private Long fileSizeBytes;
+    private String contentType;
+
     private UUID replyToMessageId;
     private String replyPreview;
 

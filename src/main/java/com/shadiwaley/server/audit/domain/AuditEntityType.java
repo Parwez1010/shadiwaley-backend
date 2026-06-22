@@ -12,5 +12,7 @@ public enum AuditEntityType {
     CHAT_ROOM,
     CHAT_MESSAGE,
     SYSTEM,
+    SUPPORT_TICKET,
+    SUPPORT_TICKET_REPLY,
     PROPOSAL
 }

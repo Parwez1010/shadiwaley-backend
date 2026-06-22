@@ -27,4 +27,10 @@ public interface EmployeeAccountRepository extends JpaRepository<EmployeeAccount
             com.shadiwaley.server.employee.domain.EmployeeAccountStatus accountStatus
     );
     long countByRole(com.shadiwaley.server.employee.domain.EmployeeRole role);
+
+    List<EmployeeAccount>
+    findByRoleInAndStatusAndDeletedAtIsNullOrderByFullNameAsc(
+            List<EmployeeRole> roles,
+            EmployeeStatus status
+    );
 }

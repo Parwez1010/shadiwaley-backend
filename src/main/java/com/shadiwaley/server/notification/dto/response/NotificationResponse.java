@@ -17,6 +17,9 @@ public class NotificationResponse {
     private String actionUrl;
     private UUID referenceId;
     private boolean read;
+    private String actionType;
+
+    private UUID actionTargetId;
     private Instant readAt;
     private Instant createdAt;
 }

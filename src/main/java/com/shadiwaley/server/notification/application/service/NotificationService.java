@@ -11,6 +11,9 @@ import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepositor
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -47,15 +50,39 @@ public class NotificationService {
         notificationRepository.save(notification);
     }
 
-    public NotificationListResponse getMyNotifications() {
+    public NotificationListResponse getMyNotifications(
+            int page,
+            int size
+    ) {
+
         UUID userId = AuthUser.getCurrentUserId();
 
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                Math.min(Math.max(size, 1), 100)
+        );
+
+        Page<UserNotification> notificationPage =
+                notificationRepository.findByUserAccountIdOrderByCreatedAtDesc(
+                        userId,
+                        pageable
+                );
+
         return NotificationListResponse.builder()
-                .unreadCount(notificationRepository.countByUserAccountIdAndReadFalse(userId))
-                .notifications(notificationRepository.findByUserAccountIdOrderByCreatedAtDesc(userId)
-                        .stream()
-                        .map(this::toResponse)
-                        .toList())
+                .unreadCount(
+                        notificationRepository.countByUserAccountIdAndReadFalse(userId)
+                )
+                .page(notificationPage.getNumber())
+                .size(notificationPage.getSize())
+                .totalElements(notificationPage.getTotalElements())
+                .totalPages(notificationPage.getTotalPages())
+                .last(notificationPage.isLast())
+                .notifications(
+                        notificationPage.getContent()
+                                .stream()
+                                .map(this::toResponse)
+                                .toList()
+                )
                 .build();
     }
 
@@ -93,10 +120,48 @@ public class NotificationService {
                 .title(notification.getTitle())
                 .message(notification.getMessage())
                 .actionUrl(notification.getActionUrl())
+                .actionType(resolveActionType(notification))
+                .actionTargetId(notification.getReferenceId())
                 .referenceId(notification.getReferenceId())
                 .read(notification.isRead())
                 .readAt(notification.getReadAt())
                 .createdAt(notification.getCreatedAt())
                 .build();
+    }
+
+    public long getUnreadCount() {
+
+        UUID userId = AuthUser.getCurrentUserId();
+
+        return notificationRepository
+                .countByUserAccountIdAndReadFalse(userId);
+    }
+    private String resolveActionType(
+            UserNotification notification
+    ) {
+
+        return switch (notification.getType()) {
+
+            case RISHTA_RECEIVED,
+                 RISHTA_ACCEPTED,
+                 RISHTA_REJECTED,
+                 RISHTA_CANCELLED
+                    -> "RISHTA";
+
+            case CHAT_OPENED
+                    -> "CHAT";
+
+            case PROFILE_APPROVED,
+                 PROFILE_REJECTED,
+                 PROFILE_INCOMPLETE,
+                 PROFILE_READY_FOR_REVIEW
+                    -> "PROFILE";
+
+            case MEDIA_APPROVED,
+                 MEDIA_REJECTED
+                    -> "MEDIA";
+
+            default -> "SYSTEM";
+        };
     }
 }

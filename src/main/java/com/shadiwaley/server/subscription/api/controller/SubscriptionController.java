@@ -33,4 +33,22 @@ public class SubscriptionController {
     public ApiResponse<SubscriptionResponse> getMyPlan() {
         return ResponseFactory.success("Current plan fetched successfully", subscriptionService.getMyPlan());
     }
+
+    @GetMapping("/me")
+    public ApiResponse<SubscriptionResponse> getMe() {
+        return ResponseFactory.success(
+                "Current subscription fetched successfully",
+                subscriptionService.getMyPlan()
+        );
+    }
+
+    @PostMapping("/request-upgrade")
+    public ApiResponse<SubscriptionResponse> requestUpgrade(
+            @Valid @RequestBody SelectPlanRequest request
+    ) {
+        return ResponseFactory.success(
+                "Subscription upgrade request submitted successfully",
+                subscriptionService.requestUpgrade(request)
+        );
+    }
 }

@@ -62,7 +62,12 @@ public class SubscriptionService {
         Subscription subscription = new Subscription();
         subscription.setUserAccount(userAccount);
         subscription.setPlanType(plan.planType());
-        subscription.setStatus(resolveInitialStatus(plan.planType()));
+//        subscription.setStatus(resolveInitialStatus(plan.planType()));
+        subscription.setStatus(
+                plan.planType() == PlanType.FREE_ONBOARDING
+                        ? SubscriptionStatus.ACTIVE
+                        : SubscriptionStatus.PAYMENT_PENDING
+        );
         subscription.setActivatedAt(Instant.now());
         subscription.setExpiresAt(resolveExpiry(plan));
         subscription.setAutoRenew(false);
@@ -403,5 +408,39 @@ public class SubscriptionService {
 
                     return userFeatureUsageRepository.save(usage);
                 });
+    }
+
+    @Transactional
+    public SubscriptionResponse requestUpgrade(SelectPlanRequest request) {
+        UUID userId = AuthUser.getCurrentUserId();
+
+        UserAccount userAccount = userAccountRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User account not found"));
+
+        PlanDefinition plan = PlanCatalog.getPlan(request.getPlanType());
+
+        if (plan.planType() == PlanType.FREE_ONBOARDING) {
+            throw new IllegalArgumentException("Free plan is already available by default");
+        }
+
+        subscriptionRepository.findTopByUserAccountIdAndStatusOrderByCreatedAtDesc(
+                userId,
+                SubscriptionStatus.PAYMENT_PENDING
+        ).ifPresent(existing -> {
+            existing.setStatus(SubscriptionStatus.CANCELLED);
+            subscriptionRepository.save(existing);
+        });
+
+        Subscription subscription = new Subscription();
+        subscription.setUserAccount(userAccount);
+        subscription.setPlanType(plan.planType());
+        subscription.setStatus(SubscriptionStatus.PAYMENT_PENDING);
+        subscription.setActivatedAt(Instant.now());
+        subscription.setExpiresAt(null);
+        subscription.setAutoRenew(false);
+
+        Subscription saved = subscriptionRepository.save(subscription);
+
+        return toSubscriptionResponse(saved);
     }
 }

@@ -30,11 +30,11 @@ public final class PlanCatalog {
                 "Free Onboarding",
                 0,
                 "Free",
-                30,
                 0,
-                0,
-                false,
-                false,
+                -1,
+                -1,
+                true,
+                true,
                 false,
                 false,
                 false,
@@ -42,9 +42,11 @@ public final class PlanCatalog {
                 List.of(
                         "Create family profile",
                         "Complete onboarding",
+                        "Browse profiles",
+                        "Send and receive rishta requests",
+                        "Family chat after rishta acceptance",
                         "Upload profile documents",
-                        "CRM verification eligible",
-                        "Limited dashboard access"
+                        "CRM verification eligible"
                 )
         );
     }

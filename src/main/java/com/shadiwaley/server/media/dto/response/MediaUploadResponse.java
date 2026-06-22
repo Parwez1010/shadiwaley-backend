@@ -30,6 +30,12 @@ public class MediaUploadResponse {
     private MediaReviewStatus verificationStatus;
     private MediaReviewStatus reviewStatus;
 
+    private String mimeType;
+    private String originalFileName;
+    private Long fileSize;
+    private MediaReviewStatus approvalStatus;
+    private String previewUrl;
+
     private String rejectedReason;
     private String adminPreviewUrl;
 
