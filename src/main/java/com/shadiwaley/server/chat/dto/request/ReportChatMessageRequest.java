@@ -7,7 +7,8 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ReportChatMessageRequest {
+public class
+ReportChatMessageRequest {
 
     @NotBlank(message = "Reason is required")
     @Size(max = 100)

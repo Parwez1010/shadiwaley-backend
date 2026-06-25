@@ -30,6 +30,10 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
             RevenuePaymentStatus status
     );
 
+    Optional<PaymentTransaction> findByGatewayOrderId(String gatewayOrderId);
+
+    Optional<PaymentTransaction> findByGatewayPaymentId(String gatewayPaymentId);
+
 
     long countByPaymentStatus(RevenuePaymentStatus status);
 

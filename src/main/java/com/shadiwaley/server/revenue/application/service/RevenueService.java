@@ -94,12 +94,12 @@ public class RevenueService {
         subscription.setAssignedByName(actor != null ? actor.getFullName() : "System");
 
         if (isFreePlan(plan)) {
-            subscription.setSubscriptionStatus(SubscriptionStatus.FREE);
+            subscription.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
             subscription.setPaymentStatus(RevenuePaymentStatus.NOT_REQUIRED);
             subscription.setStartAt(Instant.now());
             subscription.setEndAt(null);
         } else {
-            subscription.setSubscriptionStatus(SubscriptionStatus.PENDING_PAYMENT);
+            subscription.setSubscriptionStatus(SubscriptionStatus.PAYMENT_PENDING);
             subscription.setPaymentStatus(RevenuePaymentStatus.PENDING);
             subscription.setStartAt(null);
             subscription.setEndAt(null);
@@ -169,12 +169,12 @@ public class RevenueService {
 
         if (request.getPaymentStatus() == RevenuePaymentStatus.PENDING) {
             subscription.setPaymentStatus(RevenuePaymentStatus.PENDING);
-            subscription.setSubscriptionStatus(SubscriptionStatus.PENDING_PAYMENT);
+            subscription.setSubscriptionStatus(SubscriptionStatus.PAYMENT_PENDING);
         }
 
         if (request.getPaymentStatus() == RevenuePaymentStatus.REFUNDED) {
             subscription.setPaymentStatus(RevenuePaymentStatus.REFUNDED);
-            subscription.setSubscriptionStatus(SubscriptionStatus.REFUNDED);
+            subscription.setSubscriptionStatus(SubscriptionStatus.CANCELLED);
         }
 
         familySubscriptionRepository.save(subscription);
@@ -281,41 +281,7 @@ public class RevenueService {
     public FamilySubscriptionSummaryResponse getFamilySubscription(UUID userId) {
         revenuePermissionService.assertCanManageFamily(userId);
 
-        FamilySubscription subscription = familySubscriptionRepository
-                .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(userId)
-                .orElse(null);
-
-        if (subscription == null) {
-            return FamilySubscriptionSummaryResponse.builder()
-                    .currentSubscription(freeSubscriptionFallback(userId))
-                    .paymentSummary(PaymentSummaryResponse.builder()
-                            .totalPaid(BigDecimal.ZERO)
-                            .totalPending(BigDecimal.ZERO)
-                            .lastPaymentAt(null)
-                            .lastPaymentMode(null)
-                            .build())
-                    .build();
-        }
-
-        BigDecimal totalPaid = paymentTransactionRepository
-                .sumAmountByUserAndStatus(userId, RevenuePaymentStatus.PAID);
-
-        BigDecimal totalPending = paymentTransactionRepository
-                .sumAmountByUserAndStatus(userId, RevenuePaymentStatus.PENDING);
-
-        PaymentTransaction lastPayment = paymentTransactionRepository
-                .findTopByUserAccountIdOrderByCreatedAtDesc(userId)
-                .orElse(null);
-
-        return FamilySubscriptionSummaryResponse.builder()
-                .currentSubscription(toSubscriptionResponse(subscription))
-                .paymentSummary(PaymentSummaryResponse.builder()
-                        .totalPaid(totalPaid)
-                        .totalPending(totalPending)
-                        .lastPaymentAt(lastPayment != null ? lastPayment.getPaidAt() : null)
-                        .lastPaymentMode(lastPayment != null ? lastPayment.getPaymentMode() : null)
-                        .build())
-                .build();
+        return buildFamilySubscriptionSummary(userId);
     }
 
     @Transactional(readOnly = true)
@@ -328,40 +294,10 @@ public class RevenueService {
     ) {
         revenuePermissionService.assertCanManageFamily(userId);
 
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0),
-                Math.min(Math.max(size, 1), 50),
-                Sort.by(Sort.Direction.DESC, "createdAt")
-        );
-
-        Page<PaymentTransaction> result;
-
-        if (status != null && paymentMode != null) {
-            result = paymentTransactionRepository
-                    .findByUserAccountIdAndPaymentStatusAndPaymentModeOrderByCreatedAtDesc(
-                            userId, status, paymentMode, pageable);
-        } else if (status != null) {
-            result = paymentTransactionRepository
-                    .findByUserAccountIdAndPaymentStatusOrderByCreatedAtDesc(
-                            userId, status, pageable);
-        } else if (paymentMode != null) {
-            result = paymentTransactionRepository
-                    .findByUserAccountIdAndPaymentModeOrderByCreatedAtDesc(
-                            userId, paymentMode, pageable);
-        } else {
-            result = paymentTransactionRepository
-                    .findByUserAccountIdOrderByCreatedAtDesc(userId, pageable);
-        }
-
-        return PaymentHistoryPageResponse.builder()
-                .payments(result.getContent().stream().map(this::toPaymentHistoryItem).toList())
-                .page(result.getNumber())
-                .size(result.getSize())
-                .totalElements(result.getTotalElements())
-                .totalPages(result.getTotalPages())
-                .last(result.isLast())
-                .build();
+        return buildFamilyPayments(userId, page, size, status, paymentMode);
     }
+
+
 
     private SubscriptionResponse freeSubscriptionFallback(UUID userId) {
         return SubscriptionResponse.builder()
@@ -372,7 +308,7 @@ public class RevenueService {
                 .planName("Free Onboarding")
                 .amount(BigDecimal.ZERO)
                 .currency("INR")
-                .subscriptionStatus(SubscriptionStatus.FREE)
+                .subscriptionStatus(SubscriptionStatus.ACTIVE)
                 .paymentStatus(RevenuePaymentStatus.NOT_REQUIRED)
                 .startAt(null)
                 .endAt(null)
@@ -446,7 +382,7 @@ public class RevenueService {
                                         paymentTransactionRepository.countByPaymentStatus(RevenuePaymentStatus.PENDING)
                                 )
                                 .freeFamilies(
-                                        familySubscriptionRepository.countBySubscriptionStatus(SubscriptionStatus.FREE)
+                                        familySubscriptionRepository.countBySubscriptionStatus(SubscriptionStatus.ACTIVE)
                                 )
                                 .paidFamilies(
                                         familySubscriptionRepository.countBySubscriptionStatus(SubscriptionStatus.ACTIVE)
@@ -483,6 +419,21 @@ public class RevenueService {
                 )
                 .build();
     }
+
+    @Transactional(readOnly = true)
+    public FamilySubscriptionSummaryResponse getMySubscription(UUID userId) {
+        return buildFamilySubscriptionSummary(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public PaymentHistoryPageResponse getMyPayments(
+            UUID userId,
+            int page,
+            int size
+    ) {
+        return buildFamilyPayments(userId, page, size, null, null);
+    }
+
 
     @Transactional(readOnly = true)
     public RevenuePaymentListPageResponse getRevenuePayments(
@@ -579,6 +530,91 @@ public class RevenueService {
     private boolean isBlank(String value) {
         return value == null || value.trim().isBlank();
     }
+
+    private FamilySubscriptionSummaryResponse buildFamilySubscriptionSummary(UUID userId) {
+        SubscriptionResponse currentSubscription =familySubscriptionRepository
+                .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(userId)
+                .map(this::toSubscriptionResponse)
+                .orElse(null);
+
+        BigDecimal paidAmount = paymentTransactionRepository
+                .sumAmountByUserAndStatus(userId, RevenuePaymentStatus.PAID);
+
+        BigDecimal pendingAmount = paymentTransactionRepository
+                .sumAmountByUserAndStatus(userId, RevenuePaymentStatus.PENDING);
+
+        PaymentTransaction lastPayment = paymentTransactionRepository
+                .findTopByUserAccountIdOrderByCreatedAtDesc(userId)
+                .orElse(null);
+
+        PaymentSummaryResponse paymentSummary = PaymentSummaryResponse.builder()
+                .totalPaid(paidAmount)
+                .totalPending(pendingAmount)
+                .lastPaymentAt(lastPayment != null ? lastPayment.getPaidAt() : null)
+                .lastPaymentMode(lastPayment != null ? lastPayment.getPaymentMode() : null)
+                .lastPaymentAt(lastPayment != null ? lastPayment.getPaidAt() : null)
+                .build();
+
+        return FamilySubscriptionSummaryResponse.builder()
+                .currentSubscription(currentSubscription)
+                .paymentSummary(paymentSummary)
+                .build();
+    }
+
+    private PaymentHistoryPageResponse buildFamilyPayments(
+            UUID userId,
+            int page,
+            int size,
+            RevenuePaymentStatus status,
+            PaymentMode paymentMode
+    ) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Page<PaymentTransaction> paymentPage;
+
+        if (status != null && paymentMode != null) {
+            paymentPage = paymentTransactionRepository
+                    .findByUserAccountIdAndPaymentStatusAndPaymentModeOrderByCreatedAtDesc(
+                            userId,
+                            status,
+                            paymentMode,
+                            pageable
+                    );
+        } else if (status != null) {
+            paymentPage = paymentTransactionRepository
+                    .findByUserAccountIdAndPaymentStatusOrderByCreatedAtDesc(
+                            userId,
+                            status,
+                            pageable
+                    );
+        } else if (paymentMode != null) {
+            paymentPage = paymentTransactionRepository
+                    .findByUserAccountIdAndPaymentModeOrderByCreatedAtDesc(
+                            userId,
+                            paymentMode,
+                            pageable
+                    );
+        } else {
+            paymentPage = paymentTransactionRepository
+                    .findByUserAccountIdOrderByCreatedAtDesc(userId, pageable);
+        }
+
+        return PaymentHistoryPageResponse.builder()
+                .payments(
+                        paymentPage.getContent()
+                                .stream()
+                                .map(this::toPaymentHistoryItem)
+                                .toList()
+                )
+                .page(paymentPage.getNumber())
+                .size(paymentPage.getSize())
+                .totalElements(paymentPage.getTotalElements())
+                .totalPages(paymentPage.getTotalPages())
+                .last(paymentPage.isLast())
+                .build();
+    }
+
+
 
 
 }
