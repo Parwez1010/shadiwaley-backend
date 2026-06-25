@@ -2,11 +2,14 @@ package com.shadiwaley.server.revenue.api.controller;
 
 import com.shadiwaley.server.common.response.ApiResponse;
 import com.shadiwaley.server.common.response.ResponseFactory;
+import com.shadiwaley.server.revenue.application.service.RazorpayPaymentService;
 import com.shadiwaley.server.revenue.application.service.RevenueService;
 import com.shadiwaley.server.revenue.domain.PaymentMode;
 import com.shadiwaley.server.revenue.domain.RevenuePaymentStatus;
+import com.shadiwaley.server.revenue.dto.request.AdminCreateRazorpayOrderRequest;
 import com.shadiwaley.server.revenue.dto.request.AssignPlanRequest;
 import com.shadiwaley.server.revenue.dto.request.ManualPaymentRequest;
+import com.shadiwaley.server.revenue.dto.request.VerifyRazorpayPaymentRequest;
 import com.shadiwaley.server.revenue.dto.response.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +26,7 @@ import java.util.UUID;
 public class RevenueController {
 
     private final RevenueService revenueService;
+    private final RazorpayPaymentService razorpayPaymentService;
 
     @GetMapping("/plans")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'CRM_AGENT')")
@@ -116,6 +120,28 @@ public class RevenueController {
                         fromDate,
                         toDate
                 )
+        );
+    }
+
+    @PostMapping("/razorpay/order")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'CRM_AGENT')")
+    public ApiResponse<RazorpayOrderResponse> createAdminRazorpayOrder(
+            @Valid @RequestBody AdminCreateRazorpayOrderRequest request
+    ) throws Exception {
+        return ResponseFactory.success(
+                "Razorpay order created successfully",
+                razorpayPaymentService.createAdminOrder(request)
+        );
+    }
+
+    @PostMapping("/razorpay/verify")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'CRM_AGENT')")
+    public ApiResponse<RazorpayPaymentVerifyResponse> verifyAdminRazorpayPayment(
+            @Valid @RequestBody VerifyRazorpayPaymentRequest request
+    ) {
+        return ResponseFactory.success(
+                "Payment verified successfully",
+                razorpayPaymentService.verifyAdminPayment(request)
         );
     }
 

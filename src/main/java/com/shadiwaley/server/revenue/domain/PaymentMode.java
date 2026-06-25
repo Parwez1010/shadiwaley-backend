@@ -5,6 +5,10 @@ public enum PaymentMode {
     CASH,
     UPI,
     BANK_TRANSFER,
+    NEFT,
+    RTGS,
+    CHEQUE,
+    RAZORPAY,
     MANUAL_RAZORPAY,
     OTHER
 }
