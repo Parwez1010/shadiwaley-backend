@@ -1,7 +1,10 @@
 package com.shadiwaley.server.chat.infrastructure.repository;
 
+import com.shadiwaley.server.chat.domain.ChatMode;
 import com.shadiwaley.server.chat.domain.ChatRoomStatus;
 import com.shadiwaley.server.chat.infrastructure.entity.FamilyChatRoom;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 
@@ -44,5 +47,35 @@ public interface FamilyChatRoomRepository extends JpaRepository<FamilyChatRoom, 
     List<FamilyChatRoom> findByBoyUserIdOrGirlUserId(
             UUID boyUserId,
             UUID girlUserId
+    );
+
+    long count();
+
+    long countByAssignedEmployeeIsNull();
+
+    long countByAssignedEmployeeIsNotNull();
+
+    long countByChatMode(com.shadiwaley.server.chat.domain.ChatMode chatMode);
+
+    Page<FamilyChatRoom> findByAssignedEmployeeIdOrderByUpdatedAtDesc(
+            UUID assignedEmployeeId,
+            Pageable pageable
+    );
+
+    Page<FamilyChatRoom> findByAssignedEmployeeIsNullOrderByUpdatedAtDesc(
+            Pageable pageable
+    );
+
+    Page<FamilyChatRoom> findByNeedsAttentionTrueOrderByUpdatedAtDesc(
+            Pageable pageable
+    );
+
+    Page<FamilyChatRoom> findByReportedTrueOrderByUpdatedAtDesc(
+            Pageable pageable
+    );
+
+    Page<FamilyChatRoom> findByChatModeOrderByUpdatedAtDesc(
+            ChatMode chatMode,
+            Pageable pageable
     );
 }

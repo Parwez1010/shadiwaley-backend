@@ -4,55 +4,49 @@ import com.shadiwaley.server.audit.application.service.AuditLogService;
 import com.shadiwaley.server.audit.domain.AuditAction;
 import com.shadiwaley.server.audit.domain.AuditEntityType;
 import com.shadiwaley.server.chat.domain.*;
-import com.shadiwaley.server.chat.dto.admin.request.*;
-import com.shadiwaley.server.chat.dto.admin.response.*;
-import com.shadiwaley.server.chat.dto.response.ChatMessageResponse;
+import com.shadiwaley.server.chat.dto.admin.request.AdminSendChatMessageRequest;
+import com.shadiwaley.server.chat.dto.request.AdminChatInternalNoteRequest;
+import com.shadiwaley.server.chat.dto.response.*;
 import com.shadiwaley.server.chat.dto.websocket.AdminChatMonitorEvent;
-import com.shadiwaley.server.chat.dto.websocket.ChatWebSocketEvent;
 import com.shadiwaley.server.chat.infrastructure.entity.*;
 import com.shadiwaley.server.chat.infrastructure.repository.*;
-import com.shadiwaley.server.crm.domain.*;
-import com.shadiwaley.server.crm.infrastructure.entity.*;
-import com.shadiwaley.server.crm.infrastructure.repository.*;
+import com.shadiwaley.server.communication.application.service.CommunicationCenterEventPublisher;
+import com.shadiwaley.server.communication.domain.CommunicationCenterEventType;
+import com.shadiwaley.server.communication.dto.websocket.CommunicationCenterEvent;
+import com.shadiwaley.server.employee.domain.EmployeeRole;
 import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
 import com.shadiwaley.server.employee.infrastructure.repository.EmployeeAccountRepository;
-import com.shadiwaley.server.media.domain.MediaType;
+import com.shadiwaley.server.media.application.service.MediaService;
+import com.shadiwaley.server.media.application.storage.FileStorageService;
 import com.shadiwaley.server.media.infrastructure.entity.MediaFile;
 import com.shadiwaley.server.media.infrastructure.repository.MediaFileRepository;
-import com.shadiwaley.server.notification.application.service.NotificationService;
-import com.shadiwaley.server.notification.domain.NotificationType;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
-import com.shadiwaley.server.proposal.domain.ProposalStatus;
-import com.shadiwaley.server.proposal.infrastructure.entity.Proposal;
-import com.shadiwaley.server.proposal.infrastructure.repository.ProposalRepository;
-import com.shadiwaley.server.rishtapipeline.application.service.RishtaPipelineStageResolver;
-import com.shadiwaley.server.rishtapipeline.domain.RishtaPipelineStage;
-import com.shadiwaley.server.rishtapipeline.infrastructure.entity.RishtaPipelineNote;
-import com.shadiwaley.server.rishtapipeline.infrastructure.repository.RishtaPipelineNoteRepository;
-import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
-import com.shadiwaley.server.subscription.infrastructure.repository.SubscriptionRepository;
+import com.shadiwaley.server.revenue.domain.SubscriptionStatus;
+import com.shadiwaley.server.revenue.infrastructure.entity.FamilySubscription;
+import com.shadiwaley.server.revenue.infrastructure.repository.FamilySubscriptionRepository;
+import com.shadiwaley.server.security.AuthUser;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.persistence.criteria.*;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.time.*;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
-
-import static com.shadiwaley.server.autopilot.domain.AutopilotResponseStatus.FOLLOW_UP_REQUIRED;
-import static com.shadiwaley.server.chat.domain.ChatFamilyDecision.MEETING_SCHEDULED;
-import static com.shadiwaley.server.chat.domain.ChatRoomStatus.CLOSED_NO_RESPONSE;
-import static com.shadiwaley.server.proposal.domain.ProposalStatus.INTERESTED;
 
 @Service
 @RequiredArgsConstructor
@@ -60,146 +54,60 @@ public class AdminChatMonitorService {
 
     private final FamilyChatRoomRepository chatRoomRepository;
     private final FamilyChatMessageRepository chatMessageRepository;
-    private final ChatMonitorNoteRepository chatMonitorNoteRepository;
-    private final ChatFamilyDecisionLogRepository chatFamilyDecisionLogRepository;
-
+    private final ChatRoomInternalNoteRepository noteRepository;
     private final EmployeeAccountRepository employeeAccountRepository;
-    private final UserProfileRepository userProfileRepository;
     private final ParentProfileRepository parentProfileRepository;
-    private final ProposalRepository proposalRepository;
-    private final CrmFollowUpRepository crmFollowUpRepository;
-    private final CrmCaseTimelineRepository crmCaseTimelineRepository;
-
-    private final AdminChatMonitorPermissionService permissionService;
-    private final RishtaPipelineStageResolver stageResolver;
-
-    private final MediaFileRepository mediaFileRepository;
-    private final RishtaPipelineNoteRepository rishtaPipelineNoteRepository;
-
     private final AuditLogService auditLogService;
-
-    private final UserAccountRepository userAccountRepository;
-    private final NotificationService notificationService;
-    private final SimpMessagingTemplate messagingTemplate;
-    private final SubscriptionRepository subscriptionRepository;
+    private final MediaFileRepository mediaFileRepository;
     private final AdminChatMonitorEventPublisher adminChatMonitorEventPublisher;
+    private final FileStorageService fileStorageService;
+    private final ChatMessageReportRepository reportRepository;
+    private final FamilySubscriptionRepository familySubscriptionRepository;
+    private final MediaService mediaService;
+    private final UserAccountRepository userAccountRepositoryl;
+    private final CommunicationCenterEventPublisher communicationCenterEventPublisher;
+    private final UserProfileRepository userProfileRepository;
 
-
-    @Transactional(readOnly = true)
-    public AdminChatMonitorSummaryResponse getSummary(
-            LocalDate fromDate,
-            LocalDate toDate,
-            UUID assignedEmployeeId
-    ) {
-        EmployeeAccount employee = permissionService.getCurrentEmployee();
-        UUID effectiveEmployeeId = resolveEffectiveEmployeeId(employee, assignedEmployeeId);
-
-        Instant from = fromDate != null
-                ? fromDate.atStartOfDay(ZoneId.systemDefault()).toInstant()
-                : null;
-
-        Instant to = toDate != null
-                ? toDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
-                : null;
-
-        Specification<FamilyChatRoom> spec = summarySpecification(effectiveEmployeeId, from, to);
-
-        List<FamilyChatRoom> rooms = chatRoomRepository.findAll(spec);
-
-        long totalRooms = rooms.size();
-        long activeRooms = rooms.stream().filter(r -> r.getStatus() == ChatRoomStatus.ACTIVE).count();
-        long needsAttention = rooms.stream().filter(FamilyChatRoom::isNeedsAttention).count();
-        long reportedRooms = rooms.stream().filter(FamilyChatRoom::isReported).count();
-        long blockedRooms = rooms.stream().filter(FamilyChatRoom::isBlocked).count();
-        long closedSuccess = rooms.stream().filter(r -> r.getStatus() == ChatRoomStatus.CLOSED_SUCCESS).count();
-        long closedRejected = rooms.stream().filter(r -> r.getStatus() == ChatRoomStatus.CLOSED_REJECTED).count();
-        long pendingResponse = rooms.stream().filter(r -> r.getStatus() == ChatRoomStatus.PENDING_RESPONSE).count();
-
-        long todayMessages = chatMessageRepository.countBySentAtBetween(
-                LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant(),
-                LocalDate.now().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
-        );
-
-        return AdminChatMonitorSummaryResponse.builder()
-                .totalRooms(totalRooms)
-                .activeRooms(activeRooms)
-                .needsAttention(needsAttention)
-                .reportedRooms(reportedRooms)
-                .blockedRooms(blockedRooms)
-                .closedSuccess(closedSuccess)
-                .closedRejected(closedRejected)
-                .pendingResponse(pendingResponse)
-                .unreadMessages(0)
-                .todayMessages(todayMessages)
-                .avgResponseMinutes(0)
-                .build();
-    }
 
     @Transactional(readOnly = true)
     public AdminChatRoomPageResponse getRooms(
             int page,
             int size,
-            String search,
             ChatRoomStatus status,
+            ChatMode chatMode,
+            Boolean reported,
+            Boolean needsAttention,
+            Boolean blocked,
             UUID assignedEmployeeId,
-            UUID crmCaseId,
-            UUID proposalId,
-            UUID pipelineId,
-            UUID fromProfileId,
-            UUID toProfileId,
-            String district,
-            String side,
-            Boolean hasUnread,
-            Boolean reportedOnly,
-            Boolean needsAttentionOnly,
+            String search,
             LocalDate fromDate,
-            LocalDate toDate,
-            String sort
+            LocalDate toDate
     ) {
-        EmployeeAccount employee = permissionService.getCurrentEmployee();
-        UUID effectiveEmployeeId = resolveEffectiveEmployeeId(employee, assignedEmployeeId);
+        EmployeeAccount actor = getCurrentEmployee();
 
         Pageable pageable = PageRequest.of(
                 Math.max(page, 0),
                 Math.min(Math.max(size, 1), 100),
-                resolveSort(sort)
+                Sort.by(Sort.Direction.DESC, "updatedAt")
         );
 
-        Instant from = fromDate != null
-                ? fromDate.atStartOfDay(ZoneId.systemDefault()).toInstant()
-                : null;
-
-        Instant to = toDate != null
-                ? toDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
-                : null;
-
-        Page<FamilyChatRoom> result = chatRoomRepository.findAll(
-                roomSpecification(
-                        search,
-                        status,
-                        effectiveEmployeeId,
-                        crmCaseId,
-                        proposalId,
-                        pipelineId,
-                        fromProfileId,
-                        toProfileId,
-                        district,
-                        side,
-                        reportedOnly,
-                        needsAttentionOnly,
-                        from,
-                        to
-                ),
-                pageable
+        Specification<FamilyChatRoom> spec = buildRoomSpec(
+                actor,
+                status,
+                chatMode,
+                reported,
+                needsAttention,
+                blocked,
+                assignedEmployeeId,
+                search,
+                fromDate,
+                toDate
         );
 
-        List<AdminChatRoomListItemResponse> items = result.getContent()
-                .stream()
-                .map(this::toRoomListItem)
-                .toList();
+        Page<FamilyChatRoom> result = chatRoomRepository.findAll(spec, pageable);
 
         return AdminChatRoomPageResponse.builder()
-                .items(items)
+                .items(result.getContent().stream().map(this::toRoomResponse).toList())
                 .page(result.getNumber())
                 .size(result.getSize())
                 .totalElements(result.getTotalElements())
@@ -208,547 +116,85 @@ public class AdminChatMonitorService {
                 .build();
     }
 
-    private UUID resolveEffectiveEmployeeId(EmployeeAccount employee, UUID requestedEmployeeId) {
-        if (permissionService.isAdmin(employee)) {
-            return requestedEmployeeId;
-        }
-
-        return employee.getId();
-    }
-
-    private Sort resolveSort(String sort) {
-        if (sort == null || sort.isBlank()) {
-            return Sort.by(Sort.Direction.DESC, "lastMessageAt");
-        }
-
-        String normalized = sort.trim().toLowerCase();
-
-        if (normalized.contains("createdat")) {
-            return normalized.endsWith("asc")
-                    ? Sort.by(Sort.Direction.ASC, "createdAt")
-                    : Sort.by(Sort.Direction.DESC, "createdAt");
-        }
-
-        if (normalized.contains("updatedat")) {
-            return normalized.endsWith("asc")
-                    ? Sort.by(Sort.Direction.ASC, "updatedAt")
-                    : Sort.by(Sort.Direction.DESC, "updatedAt");
-        }
-
-        return normalized.endsWith("asc")
-                ? Sort.by(Sort.Direction.ASC, "lastMessageAt")
-                : Sort.by(Sort.Direction.DESC, "lastMessageAt");
-    }
-
-    private Specification<FamilyChatRoom> summarySpecification(
-            UUID assignedEmployeeId,
-            Instant from,
-            Instant to
-    ) {
-        return (root, query, cb) -> {
-            Predicate predicate = cb.conjunction();
-
-            if (assignedEmployeeId != null) {
-                predicate = cb.and(predicate, cb.equal(root.get("assignedEmployee").get("id"), assignedEmployeeId));
-            }
-
-            if (from != null) {
-                predicate = cb.and(predicate, cb.greaterThanOrEqualTo(root.get("createdAt"), from));
-            }
-
-            if (to != null) {
-                predicate = cb.and(predicate, cb.lessThan(root.get("createdAt"), to));
-            }
-
-            return predicate;
-        };
-    }
-
-    private Specification<FamilyChatRoom> roomSpecification(
-            String search,
-            ChatRoomStatus status,
-            UUID assignedEmployeeId,
-            UUID crmCaseId,
-            UUID proposalId,
-            UUID pipelineId,
-            UUID fromProfileId,
-            UUID toProfileId,
-            String district,
-            String side,
-            Boolean reportedOnly,
-            Boolean needsAttentionOnly,
-            Instant from,
-            Instant to
-    ) {
-        return (root, query, cb) -> {
-            query.distinct(true);
-
-            Predicate predicate = cb.conjunction();
-
-            Join<FamilyChatRoom, Proposal> proposalJoin = root.join("proposal", JoinType.LEFT);
-
-            if (status != null) {
-                predicate = cb.and(predicate, cb.equal(root.get("status"), status));
-            }
-
-            if (assignedEmployeeId != null) {
-                predicate = cb.and(predicate, cb.equal(root.get("assignedEmployee").get("id"), assignedEmployeeId));
-            }
-
-            if (crmCaseId != null) {
-                predicate = cb.and(predicate, cb.equal(root.get("crmCase").get("id"), crmCaseId));
-            }
-
-            if (proposalId != null) {
-                predicate = cb.and(predicate, cb.equal(root.get("proposal").get("id"), proposalId));
-            }
-
-            if (pipelineId != null) {
-                predicate = cb.and(predicate, cb.equal(root.get("proposal").get("id"), pipelineId));
-            }
-
-            if (fromProfileId != null) {
-                predicate = cb.and(predicate, cb.equal(proposalJoin.get("fromProfile").get("id"), fromProfileId));
-            }
-
-            if (toProfileId != null) {
-                predicate = cb.and(predicate, cb.equal(proposalJoin.get("toProfile").get("id"), toProfileId));
-            }
-
-            if (Boolean.TRUE.equals(reportedOnly)) {
-                predicate = cb.and(predicate, cb.isTrue(root.get("reported")));
-            }
-
-            if (Boolean.TRUE.equals(needsAttentionOnly)) {
-                predicate = cb.and(predicate, cb.isTrue(root.get("needsAttention")));
-            }
-
-            if (from != null) {
-                predicate = cb.and(predicate, cb.greaterThanOrEqualTo(root.get("createdAt"), from));
-            }
-
-            if (to != null) {
-                predicate = cb.and(predicate, cb.lessThan(root.get("createdAt"), to));
-            }
-
-            if (search != null && !search.isBlank()) {
-                String pattern = "%" + search.trim().toLowerCase() + "%";
-
-                predicate = cb.and(predicate,
-                        cb.or(
-                                cb.like(cb.lower(root.get("id").as(String.class)), pattern),
-                                cb.like(cb.lower(root.get("lastMessageText")), pattern),
-                                cb.like(cb.lower(proposalJoin.get("id").as(String.class)), pattern)
-                        )
-                );
-            }
-
-            return predicate;
-        };
-    }
-
-    private AdminChatRoomListItemResponse toRoomListItem(FamilyChatRoom room) {
-        Proposal proposal = room.getProposal();
-
-        UserProfile fromProfile = proposal != null ? proposal.getFromProfile() : null;
-        UserProfile toProfile = proposal != null ? proposal.getToProfile() : null;
-
-        ParentProfile fromParent = fromProfile != null && fromProfile.getUserAccount() != null
-                ? parentProfileRepository.findByUserAccountId(fromProfile.getUserAccount().getId()).orElse(null)
-                : null;
-
-        ParentProfile toParent = toProfile != null && toProfile.getUserAccount() != null
-                ? parentProfileRepository.findByUserAccountId(toProfile.getUserAccount().getId()).orElse(null)
-                : null;
-
-        RishtaPipelineStage pipelineStage = proposal != null
-                ? stageResolver.resolve(proposal.getStatus())
-                : null;
-        boolean boyHasCrmSupport =
-                hasCrmSupportPlan(room.getBoyUser().getId());
-
-        boolean girlHasCrmSupport =
-                hasCrmSupportPlan(room.getGirlUser().getId());
-
-        String expectedSpeaker =
-                resolveAdminExpectedSpeaker(room, boyHasCrmSupport, girlHasCrmSupport);
-
-
-        return AdminChatRoomListItemResponse.builder()
-                .roomId(room.getId())
-                .proposalId(proposal != null ? proposal.getId() : null)
-                .pipelineId(proposal != null ? proposal.getId() : null)
-                .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
-
-                .fromProfileId(fromProfile != null ? fromProfile.getId() : null)
-                .fromCandidateName(fromProfile != null ? fromProfile.getCandidateFirstName() : null)
-                .fromParentName(fromParent != null ? fromParent.getParentName() : null)
-                .fromPhone(fromProfile != null && fromProfile.getUserAccount() != null ? fromProfile.getUserAccount().getPhone() : null)
-                .fromSide(fromProfile != null && fromProfile.getUserAccount() != null && fromProfile.getUserAccount().getSide() != null ? fromProfile.getUserAccount().getSide().name() : null)
-                .fromDistrict(fromParent != null ? fromParent.getDistrict() : null)
-
-                .chatMode(room.getChatMode() != null ? room.getChatMode().name() : null)
-                .boyHasCrmSupport(boyHasCrmSupport)
-                .girlHasCrmSupport(girlHasCrmSupport)
-                .expectedSpeaker(expectedSpeaker)
-
-
-                .toProfileId(toProfile != null ? toProfile.getId() : null)
-                .toCandidateName(toProfile != null ? toProfile.getCandidateFirstName() : null)
-                .toParentName(toParent != null ? toParent.getParentName() : null)
-                .toPhone(toProfile != null && toProfile.getUserAccount() != null ? toProfile.getUserAccount().getPhone() : null)
-                .toSide(toProfile != null && toProfile.getUserAccount() != null && toProfile.getUserAccount().getSide() != null ? toProfile.getUserAccount().getSide().name() : null)
-                .toDistrict(toParent != null ? toParent.getDistrict() : null)
-
-                .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
-                .assignedEmployeeName(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getFullName() : null)
-
-                .status(room.getStatus())
-                .statusLabel(statusLabel(room.getStatus()))
-
-                .lastMessageText(room.getLastMessageText())
-                .lastMessageType(room.getLastMessageType())
-                .lastMessageAt(room.getLastMessageAt())
-                .lastMessageByName(room.getLastMessageByName())
-
-                .unreadCount(0)
-                .messageCount(room.getMessageCount())
-                .reported(room.isReported())
-                .needsAttention(room.isNeedsAttention())
-                .blocked(room.isBlocked())
-
-                .matchScore(proposal != null ? proposal.getMatchScore() : null)
-                .proposalStatus(proposal != null ? proposal.getStatus() : null)
-                .pipelineStage(pipelineStage)
-                .pipelineStageLabel(pipelineStage != null ? stageResolver.label(pipelineStage) : null)
-
-                .createdAt(room.getCreatedAt())
-                .updatedAt(room.getUpdatedAt())
-                .build();
-    }
-
-    private String statusLabel(ChatRoomStatus status) {
-        if (status == null) return "Unknown";
-
-        return switch (status) {
-            case ACTIVE -> "Active";
-            case PENDING_RESPONSE -> "Pending Response";
-            case NEEDS_CRM_ATTENTION -> "Needs CRM Attention";
-            case REPORTED -> "Reported";
-            case BLOCKED -> "Blocked";
-            case CLOSED_SUCCESS -> "Closed Success";
-            case CLOSED_REJECTED -> "Closed Rejected";
-            case CLOSED_NO_RESPONSE -> "Closed No Response";
-            case CLOSED_BY_ADMIN -> "Closed By Admin";
-            case CLOSED -> "Closed";
-        };
-    }
 
     @Transactional(readOnly = true)
     public AdminChatRoomDetailResponse getRoomDetail(UUID roomId) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanViewRoom(room);
+        EmployeeAccount actor = getCurrentEmployee();
 
-        Proposal proposal = room.getProposal();
+        FamilyChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("Chat room not found"));
 
-        UserProfile fromProfile = proposal != null ? proposal.getFromProfile() : null;
-        UserProfile toProfile = proposal != null ? proposal.getToProfile() : null;
+        assertCanAccessRoom(actor, room);
 
-        ParentProfile fromParent = resolveParent(fromProfile);
-        ParentProfile toParent = resolveParent(toProfile);
-
-        RishtaPipelineStage pipelineStage = proposal != null
-                ? stageResolver.resolve(proposal.getStatus())
-                : null;
-
-        CrmFollowUp latestFollowUp = proposal != null
-                ? crmFollowUpRepository.findTopByProposal_IdOrderByScheduledAtDesc(proposal.getId()).orElse(null)
-                : null;
-
-        RishtaPipelineNote latestNote = proposal != null
-                ? rishtaPipelineNoteRepository.findTopByProposalIdOrderByCreatedAtDesc(proposal.getId()).orElse(null)
-                : null;
-
-        long attachmentCount = chatMessageRepository.countByRoomIdAndMediaFileIsNotNull(room.getId());
-
-        return AdminChatRoomDetailResponse.builder()
-                .room(AdminChatRoomDetailResponse.RoomInfo.builder()
-                        .roomId(room.getId())
-                        .proposalId(proposal != null ? proposal.getId() : null)
-                        .pipelineId(proposal != null ? proposal.getId() : null)
-                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
-                        .status(room.getStatus())
-                        .statusLabel(statusLabel(room.getStatus()))
-                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
-                        .assignedEmployeeName(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getFullName() : null)
-                        .matchScore(proposal != null ? proposal.getMatchScore() : null)
-                        .proposalStatus(proposal != null ? proposal.getStatus() : null)
-                        .pipelineStage(pipelineStage)
-                        .chatMode(room.getChatMode() != null ? room.getChatMode().name() : null)
-                        .boyHasCrmSupport(hasCrmSupportPlan(room.getBoyUser().getId()))
-                        .girlHasCrmSupport(hasCrmSupportPlan(room.getGirlUser().getId()))
-                        .expectedSpeaker(resolveAdminExpectedSpeaker(
-                                room,
-                                hasCrmSupportPlan(room.getBoyUser().getId()),
-                                hasCrmSupportPlan(room.getGirlUser().getId())
-                        ))
-                        .pipelineStageLabel(pipelineStage != null ? stageResolver.label(pipelineStage) : null)
-                        .createdAt(room.getCreatedAt())
-                        .lastMessageAt(room.getLastMessageAt())
-                        .build())
-                .fromProfile(toProfileInfo(fromProfile, fromParent))
-                .toProfile(toProfileInfo(toProfile, toParent))
-                .proposal(proposal != null
-                        ? AdminChatRoomDetailResponse.ProposalInfo.builder()
-                        .proposalId(proposal.getId())
-                        .status(proposal.getStatus())
-                        .matchScore(proposal.getMatchScore())
-                        .sentAt(proposal.getDispatchedAt())
-                        .build()
-                        : null)
-                .pipeline(AdminChatRoomDetailResponse.PipelineInfo.builder()
-                        .pipelineStage(pipelineStage)
-                        .pipelineStageLabel(pipelineStage != null ? stageResolver.label(pipelineStage) : null)
-                        .nextFollowUpAt(latestFollowUp != null ? latestFollowUp.getScheduledAt() : null)
-                        .lastNote(latestNote != null ? latestNote.getNote() : null)
-                        .build())
-                .moderation(AdminChatRoomDetailResponse.ModerationInfo.builder()
-                        .reported(room.isReported())
-                        .blocked(room.isBlocked())
-                        .needsAttention(room.isNeedsAttention())
-                        .lastReportReason(room.getLastReportReason())
-                        .build())
-                .stats(AdminChatRoomDetailResponse.StatsInfo.builder()
-                        .messageCount(room.getMessageCount())
-                        .unreadCount(0)
-                        .attachmentCount(attachmentCount)
-                        .lastMessageAt(room.getLastMessageAt())
-                        .build())
-                .build();
+        return toRoomDetailResponse(room);
     }
 
     @Transactional(readOnly = true)
     public AdminChatMessagePageResponse getMessages(
             UUID roomId,
-            int page,
-            int size,
-            UUID beforeMessageId,
-            UUID afterMessageId,
-            String sort
+            Instant before,
+            int limit
     ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanViewRoom(room);
+        EmployeeAccount actor = getCurrentEmployee();
 
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0),
-                Math.min(Math.max(size, 1), 100),
-                resolveMessageSort(sort)
+        FamilyChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("Chat room not found"));
+
+        assertCanAccessRoom(actor, room);
+
+        int safeLimit = Math.min(Math.max(limit, 1), 100);
+
+        List<FamilyChatMessage> fetched = before == null
+                ? chatMessageRepository.findByRoomIdAndDeletedAtIsNullOrderBySentAtDesc(
+                roomId,
+                PageRequest.of(0, safeLimit + 1)
+        )
+                : chatMessageRepository.findByRoomIdAndSentAtBeforeAndDeletedAtIsNullOrderBySentAtDesc(
+                roomId,
+                before,
+                PageRequest.of(0, safeLimit + 1)
         );
 
-        Page<FamilyChatMessage> result;
+        boolean hasMore = fetched.size() > safeLimit;
 
-        if (beforeMessageId != null) {
-            FamilyChatMessage cursor = getMessageOrThrow(beforeMessageId);
+        List<FamilyChatMessage> page = hasMore
+                ? fetched.subList(0, safeLimit)
+                : fetched;
 
-            result = chatMessageRepository.findByRoomIdAndSentAtBeforeOrderBySentAtDesc(
-                    roomId,
-                    cursor.getSentAt(),
-                    pageable
-            );
-        } else if (afterMessageId != null) {
-            FamilyChatMessage cursor = getMessageOrThrow(afterMessageId);
+        List<AdminChatMessageResponse> messages = page.stream()
+                .sorted(Comparator.comparing(FamilyChatMessage::getSentAt))
+                .map(this::toMessageResponse)
+                .toList();
 
-            result = chatMessageRepository.findByRoomIdAndSentAtAfterOrderBySentAtAsc(
-                    roomId,
-                    cursor.getSentAt(),
-                    pageable
-            );
-        } else {
-            result = chatMessageRepository.findByRoomIdOrderBySentAtDesc(roomId, pageable);
-        }
+        Instant nextCursor = page.isEmpty()
+                ? null
+                : page.get(page.size() - 1).getSentAt();
 
         return AdminChatMessagePageResponse.builder()
-                .items(result.getContent().stream().map(this::toAdminMessage).toList())
-                .page(result.getNumber())
-                .size(result.getSize())
-                .totalElements(result.getTotalElements())
-                .totalPages(result.getTotalPages())
-                .last(result.isLast())
+                .messages(messages)
+                .nextCursor(nextCursor)
+                .hasMore(hasMore)
                 .build();
-    }
-
-    private FamilyChatRoom getRoomOrThrow(UUID roomId) {
-        return chatRoomRepository.findById(roomId)
-                .orElseThrow(() -> new EntityNotFoundException("Chat room not found"));
-    }
-
-    private FamilyChatMessage getMessageOrThrow(UUID messageId) {
-        return chatMessageRepository.findById(messageId)
-                .orElseThrow(() -> new EntityNotFoundException("Chat message not found"));
-    }
-
-    private ParentProfile resolveParent(UserProfile profile) {
-        if (profile == null || profile.getUserAccount() == null) {
-            return null;
-        }
-
-        return parentProfileRepository
-                .findByUserAccountId(profile.getUserAccount().getId())
-                .orElse(null);
-    }
-
-    private AdminChatRoomDetailResponse.ProfileInfo toProfileInfo(
-            UserProfile profile,
-            ParentProfile parent
-    ) {
-        if (profile == null) {
-            return null;
-        }
-
-        String photoUrl = null;
-
-        MediaFile primaryPhoto = mediaFileRepository
-                .findTopByUserProfileIdAndMediaTypeAndPrimaryTrueAndDeletedFalseOrderByCreatedAtDesc(
-                        profile.getId(),
-                        MediaType.PROFILE_PHOTO
-                )
-                .orElse(null);
-
-        if (primaryPhoto != null) {
-            photoUrl = "/api/v1/media/" + primaryPhoto.getId() + "/view";
-        }
-
-        return AdminChatRoomDetailResponse.ProfileInfo.builder()
-                .profileId(profile.getId())
-                .candidateName(profile.getCandidateFirstName())
-                .parentName(parent != null ? parent.getParentName() : null)
-                .parentPhone(parent != null ? parent.getParentPhone() : null)
-                .side(profile.getUserAccount() != null && profile.getUserAccount().getSide() != null
-                        ? profile.getUserAccount().getSide().name()
-                        : null)
-                .age(profile.getCandidateAge())
-                .district(parent != null ? parent.getDistrict() : null)
-                .state(parent != null ? parent.getState() : null)
-                .caste(parent != null ? parent.getCaste() : null)
-                .maslak(parent != null ? parent.getMaslak() : null)
-                .education(profile.getEducation())
-                .professionTitle(profile.getProfessionTitle())
-                .profilePhotoViewUrl(photoUrl)
-                .build();
-    }
-
-    private AdminChatMessageResponse toAdminMessage(FamilyChatMessage message) {
-        UserProfile senderProfile = userProfileRepository
-                .findByUserAccountId(message.getSenderUser().getId())
-                .orElse(null);
-
-        String senderSide = message.getSenderUser().getSide() != null
-                ? message.getSenderUser().getSide().name()
-                : null;
-
-        String direction = resolveDirection(message);
-
-        MediaFile media = message.getMediaFile();
-
-        return AdminChatMessageResponse.builder()
-                .messageId(message.getId())
-                .roomId(message.getRoom().getId())
-                .senderUserId(message.getSenderUser().getId())
-                .senderProfileId(senderProfile != null ? senderProfile.getId() : null)
-                .senderName(resolveAdminSenderName(message, senderProfile))
-                .senderRole(
-                        message.getSenderType() != null
-                                ? message.getSenderType().name()
-                                : "CUSTOMER"
-                )
-                .senderSide(senderSide)
-                .messageType(message.getMessageType())
-                .text(message.getContent())
-                .attachmentUrl(media != null ? "/api/v1/media/" + media.getId() + "/view" : null)
-                .attachmentFileName(media != null ? media.getOriginalFileName() : null)
-                .attachmentMimeType(media != null ? media.getContentType() : null)
-                .attachmentSizeBytes(media != null ? media.getFileSizeBytes() : null)
-                .direction(direction)
-                .moderationStatus(message.getModerationStatus())
-                .reported(message.getModerationStatus() == com.shadiwaley.server.chat.domain.ChatModerationStatus.REPORTED
-                        || message.getModerationStatus() == com.shadiwaley.server.chat.domain.ChatModerationStatus.UNDER_REVIEW)
-                .hidden(message.getModerationStatus() == com.shadiwaley.server.chat.domain.ChatModerationStatus.HIDDEN)
-                .deleted(message.getDeletedAt() != null
-                        || message.getModerationStatus() == com.shadiwaley.server.chat.domain.ChatModerationStatus.DELETED)
-                .readByOtherSide(message.getReadAt() != null)
-                .readAt(message.getReadAt())
-                .createdAt(message.getSentAt())
-                .updatedAt(message.getEditedAt() != null ? message.getEditedAt() : message.getSentAt())
-                .senderType(message.getSenderType())
-
-                .senderEmployeeId(message.getSenderEmployee() != null
-                        ? message.getSenderEmployee().getId()
-                        : null)
-
-                .senderEmployeeName(message.getSenderEmployee() != null
-                        ? message.getSenderEmployee().getFullName()
-                        : null)
-
-                .assistedUserId(message.getAssistedUser() != null
-                        ? message.getAssistedUser().getId()
-                        : null)
-
-                .assistedFamilyName(message.getAssistedFamilyName())
-
-                .build();
-    }
-
-    private String resolveDirection(FamilyChatMessage message) {
-        FamilyChatRoom room = message.getRoom();
-
-        if (room.getBoyUser() != null
-                && message.getSenderUser().getId().equals(room.getBoyUser().getId())) {
-            return "FAMILY_A_TO_FAMILY_B";
-        }
-
-        if (room.getGirlUser() != null
-                && message.getSenderUser().getId().equals(room.getGirlUser().getId())) {
-            return "FAMILY_B_TO_FAMILY_A";
-        }
-
-        return "SYSTEM";
-    }
-
-    private Sort resolveMessageSort(String sort) {
-        if (sort == null || sort.isBlank()) {
-            return Sort.by(Sort.Direction.DESC, "sentAt");
-        }
-
-        String normalized = sort.trim().toLowerCase();
-
-        return normalized.endsWith("asc")
-                ? Sort.by(Sort.Direction.ASC, "sentAt")
-                : Sort.by(Sort.Direction.DESC, "sentAt");
     }
 
     @Transactional
-    public AdminChatNoteResponse addNote(UUID roomId, AdminChatNoteRequest request) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanUpdateRoom(room);
+    public AdminChatInternalNoteResponse addInternalNote(
+            UUID roomId,
+            AdminChatInternalNoteRequest request
+    ) {
+        EmployeeAccount actor = getCurrentEmployee();
 
-        EmployeeAccount employee = permissionService.getCurrentEmployee();
+        FamilyChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("Chat room not found"));
 
-        ChatMonitorNote note = new ChatMonitorNote();
+        assertCanAccessRoom(actor, room);
+
+        ChatRoomInternalNote note = new ChatRoomInternalNote();
         note.setRoom(room);
-        note.setNote(request.getNote().trim());
-        note.setCreatedByEmployee(employee);
-        note.setCreatedByName(employee.getFullName());
+        note.setEmployee(actor);
+        note.setNote(request.getNote());
 
-        ChatMonitorNote saved = chatMonitorNoteRepository.save(note);
-
-        addChatTimeline(
-                room,
-                CrmTimelineEventType.CHAT_INTERNAL_NOTE_ADDED,
-                "Chat note added",
-                saved.getNote(),
-                null,
-                null
-        );
+        ChatRoomInternalNote saved = noteRepository.save(note);
 
         auditLogService.record(
                 AuditAction.CHAT_INTERNAL_NOTE_ADDED,
@@ -760,710 +206,836 @@ public class AdminChatMonitorService {
         return toNoteResponse(saved);
     }
 
-    @Transactional
-    public AdminChatStatusUpdateResponse updateStatus(
-            UUID roomId,
-            AdminChatStatusUpdateRequest request
+    @Transactional(readOnly = true)
+    public List<AdminChatInternalNoteResponse> getInternalNotes(UUID roomId) {
+        EmployeeAccount actor = getCurrentEmployee();
+
+        FamilyChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("Chat room not found"));
+
+        assertCanAccessRoom(actor, room);
+
+        return noteRepository.findByRoomIdOrderByCreatedAtDesc(roomId)
+                .stream()
+                .map(this::toNoteResponse)
+                .toList();
+    }
+
+    private Specification<FamilyChatRoom> buildRoomSpec(
+            EmployeeAccount actor,
+            ChatRoomStatus status,
+            ChatMode chatMode,
+            Boolean reported,
+            Boolean needsAttention,
+            Boolean blocked,
+            UUID assignedEmployeeId,
+            String search,
+            LocalDate fromDate,
+            LocalDate toDate
     ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanUpdateRoom(room);
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
 
-        ChatRoomStatus oldStatus = room.getStatus();
+            /*
+             * Role visibility:
+             * SUPER_ADMIN / ADMIN -> all rooms
+             * CRM_AGENT / SUPPORT_AGENT -> only assigned rooms
+             */
+            if (!isAdmin(actor)) {
+                predicates.add(
+                        cb.equal(root.get("assignedEmployee").get("id"), actor.getId())
+                );
+            }
 
-        room.setStatus(request.getStatus());
-        room.setNeedsAttention(request.getStatus() == ChatRoomStatus.NEEDS_CRM_ATTENTION);
-        room.setBlocked(request.getStatus() == ChatRoomStatus.BLOCKED);
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
 
-        if (isClosedStatus(request.getStatus())) {
-            room.setClosedAt(Instant.now());
-        }
+            if (chatMode != null) {
+                predicates.add(cb.equal(root.get("chatMode"), chatMode));
+            }
 
-        FamilyChatRoom saved = chatRoomRepository.save(room);
+            if (reported != null) {
+                predicates.add(cb.equal(root.get("reported"), reported));
+            }
 
-        if (request.getNote() != null && !request.getNote().isBlank()) {
-            AdminChatNoteRequest noteRequest = new AdminChatNoteRequest();
-            noteRequest.setNote(request.getNote());
-            addNote(roomId, noteRequest);
-        }
+            if (needsAttention != null) {
+                predicates.add(cb.equal(root.get("needsAttention"), needsAttention));
+            }
 
-        addChatTimeline(
-                saved,
-                CrmTimelineEventType.CHAT_ROOM_STATUS_UPDATED,
-                "Chat status updated",
-                "Chat status changed to " + request.getStatus(),
-                oldStatus != null ? oldStatus.name() : null,
-                request.getStatus().name()
-        );
+            if (blocked != null) {
+                predicates.add(cb.equal(root.get("blocked"), blocked));
+            }
 
-        auditLogService.record(
-                AuditAction.CHAT_ROOM_STATUS_UPDATED,
-                AuditEntityType.CHAT_ROOM,
-                saved.getId(),
-                "Chat room status changed from "
-                        + (oldStatus != null ? oldStatus.name() : "NONE")
-                        + " to "
-                        + request.getStatus().name()
-        );
+            if (assignedEmployeeId != null) {
+                predicates.add(
+                        cb.equal(root.get("assignedEmployee").get("id"), assignedEmployeeId)
+                );
+            }
 
-        return AdminChatStatusUpdateResponse.builder()
-                .roomId(saved.getId())
-                .status(saved.getStatus())
-                .statusLabel(statusLabel(saved.getStatus()))
-                .updatedAt(saved.getUpdatedAt())
+            if (fromDate != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("createdAt"),
+                                fromDate
+                                        .atStartOfDay()
+                                        .atZone(ZoneId.systemDefault())
+                                        .toInstant()
+                        )
+                );
+            }
+
+            if (toDate != null) {
+                predicates.add(
+                        cb.lessThan(
+                                root.get("createdAt"),
+                                toDate
+                                        .plusDays(1)
+                                        .atStartOfDay()
+                                        .atZone(ZoneId.systemDefault())
+                                        .toInstant()
+                        )
+                );
+            }
+
+            if (search != null && !search.isBlank()) {
+                String pattern = "%" + search.trim().toLowerCase() + "%";
+
+                predicates.add(
+                        cb.or(
+                                cb.like(cb.lower(root.get("lastMessageText")), pattern),
+                                cb.like(cb.lower(root.get("lastMessageByName")), pattern),
+                                cb.like(cb.lower(root.get("lastReportReason")), pattern),
+                                cb.like(cb.lower(root.get("fromUser").get("phone")), pattern),
+                                cb.like(cb.lower(root.get("toUser").get("phone")), pattern),
+                                cb.like(cb.lower(root.get("fromProfile").get("candidateFirstName")), pattern),
+                                cb.like(cb.lower(root.get("toProfile").get("candidateFirstName")), pattern)
+                        )
+                );
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    private AdminChatRoomResponse toRoomResponse(FamilyChatRoom room) {
+
+        AdminChatParticipantResponse from = resolveFromParticipant(room);
+        AdminChatParticipantResponse to = resolveToParticipant(room);
+
+        UserAccount subscriptionOwner = room.getGirlUser();
+        FamilySubscription subscription =
+                getCurrentSubscription(subscriptionOwner.getId());
+
+        boolean active =
+                subscription != null
+                        && subscription.getSubscriptionStatus() == SubscriptionStatus.ACTIVE;
+
+
+        boolean subscriptionActive = isActiveSubscription(subscription);
+
+        boolean crmAllowed =
+                isCrmAllowed(subscription);
+
+        boolean crmAssigned =
+                room.getAssignedEmployee() != null;
+
+        return AdminChatRoomResponse.builder()
+                .roomId(room.getId())
+                .rishtaRequestId(room.getRishtaRequest() != null ? room.getRishtaRequest().getId() : null)
+                .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                .assignedEmployeeName(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getFullName() : null)
+                .fromProfile(from)
+                .toProfile(to)
+                .crmAssistanceAllowed(crmAllowed)
+
+                .crmAssigned(
+                        room.getAssignedEmployee() != null
+                )
+
+                .canIntervene(crmAllowed)
+
+                .canSendMessage(crmAllowed)
+                .fromProfileId(from != null ? from.getProfileId() : null)
+                .fromCandidateName(from != null ? from.getCandidateName() : null)
+                .toProfileId(to != null ? to.getProfileId() : null)
+                .toCandidateName(to != null ? to.getCandidateName() : null)
+                .status(room.getStatus())
+                .chatMode(room.getChatMode())
+                .blocked(room.isBlocked())
+                .reported(room.isReported())
+                .planCode(subscription != null ? subscription.getPlanCode() : null)
+                .planName(subscription != null ? subscription.getPlanName() : null)
+                .subscriptionStatus(subscription != null ? subscription.getSubscriptionStatus().name() : null)
+                .subscriptionActive(subscriptionActive)
+                .subscriptionEndAt(subscription != null ? subscription.getEndAt() : null)
+                .crmAssistanceAllowed(crmAllowed)
+                .crmAssigned(crmAssigned)
+                .canIntervene(crmAllowed)
+                .canSendMessage(crmAllowed)
+                .fromParentName(from != null ? from.getParentName() : null)
+                .fromPhone(from != null ? from.getPhone() : null)
+                .fromSide(from != null ? from.getSide() : null)
+                .fromDistrict(from != null ? from.getDistrict() : null)
+
+                .toParentName(to != null ? to.getParentName() : null)
+                .toPhone(to != null ? to.getPhone() : null)
+                .toSide(to != null ? to.getSide() : null)
+                .toDistrict(to != null ? to.getDistrict() : null)
+
+                .needsAttention(room.isNeedsAttention())
+                .lastReportReason(room.getLastReportReason())
+                .lastMessageText(room.getLastMessageText())
+                .lastMessageType(room.getLastMessageType())
+                .lastMessageAt(room.getLastMessageAt())
+                .lastMessageByName(room.getLastMessageByName())
+                .messageCount(room.getMessageCount())
+                .createdAt(room.getCreatedAt())
+                .updatedAt(room.getUpdatedAt())
+
                 .build();
     }
 
-    @Transactional
-    public AdminMessageModerationResponse moderateMessage(
-            UUID messageId,
-            AdminMessageModerationRequest request
-    ) {
-        FamilyChatMessage message = getMessageOrThrow(messageId);
-        FamilyChatRoom room = message.getRoom();
+    private AdminChatRoomDetailResponse toRoomDetailResponse(FamilyChatRoom room) {
 
-        permissionService.assertCanModerateMessage(room);
+        AdminChatParticipantResponse from =
+                resolveFromParticipant(room);
 
-        message.setModerationStatus(request.getModerationStatus());
+        AdminChatParticipantResponse to =
+                resolveToParticipant(room);
 
-        if (request.getModerationStatus() == ChatModerationStatus.DELETED) {
-            message.setDeletedAt(Instant.now());
-            message.setContent("This message was removed by admin.");
-        }
-
-        if (request.getModerationStatus() == ChatModerationStatus.HIDDEN
-                || request.getModerationStatus() == ChatModerationStatus.FLAGGED
-                || request.getModerationStatus() == ChatModerationStatus.UNDER_REVIEW
-                || request.getModerationStatus() == ChatModerationStatus.REPORTED) {
-            room.setNeedsAttention(true);
-            room.setStatus(ChatRoomStatus.NEEDS_CRM_ATTENTION);
-        }
-
-        FamilyChatMessage saved = chatMessageRepository.save(message);
-        chatRoomRepository.save(room);
-
-        addChatTimeline(
-                room,
-                CrmTimelineEventType.CHAT_MESSAGE_MODERATED,
-                "Chat message moderated",
-                request.getReason() != null && !request.getReason().isBlank()
-                        ? request.getReason()
-                        : "Message moderation changed to " + request.getModerationStatus(),
-                null,
-                request.getModerationStatus().name()
-        );
-
-        auditLogService.record(
-                AuditAction.CHAT_MESSAGE_MODERATED,
-                AuditEntityType.CHAT_MESSAGE,
-                saved.getId(),
-                "Message moderation updated to " + request.getModerationStatus()
-        );
-
-        return AdminMessageModerationResponse.builder()
-                .messageId(saved.getId())
-                .moderationStatus(saved.getModerationStatus())
-                .updatedAt(Instant.now())
+        return AdminChatRoomDetailResponse.builder()
+                .roomId(room.getId())
+                .rishtaRequestId(room.getRishtaRequest() != null ? room.getRishtaRequest().getId() : null)
+                .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                .assignedEmployeeName(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getFullName() : null)
+                .fromProfile(from)
+                .toProfile(to)
+                .status(room.getStatus())
+                .statusLabel(resolveStatusLabel(room.getStatus()))
+                .chatMode(room.getChatMode())
+                .expectedSpeaker(resolveExpectedSpeaker(room))
+                .blocked(room.isBlocked())
+                .reported(room.isReported())
+                .needsAttention(room.isNeedsAttention())
+                .lastReportReason(room.getLastReportReason())
+                .lastMessageText(room.getLastMessageText())
+                .lastMessageAt(room.getLastMessageAt())
+                .lastMessageByName(room.getLastMessageByName())
+                .messageCount(room.getMessageCount())
+                .unreadCount(0L)
+                .attachmentCount(countAttachments(room.getId()))
+                .createdAt(room.getCreatedAt())
+                .updatedAt(room.getUpdatedAt())
+                .closedAt(room.getClosedAt())
                 .build();
     }
 
-    @Transactional
-    public AdminChatStatusUpdateResponse reportRoom(
-            UUID roomId,
-            AdminChatActionReasonRequest request
-    ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanUpdateRoom(room);
 
-        room.setReported(true);
-        room.setNeedsAttention(true);
-        room.setLastReportReason(request.getReason());
-        room.setStatus(ChatRoomStatus.REPORTED);
-
-        FamilyChatRoom saved = chatRoomRepository.save(room);
-
-        addChatTimeline(
-                saved,
-                CrmTimelineEventType.CHAT_ROOM_REPORTED,
-                "Chat room reported",
-                request.getReason(),
-                null,
-                ChatRoomStatus.REPORTED.name()
-        );
-
-        auditLogService.record(
-                AuditAction.CHAT_ROOM_REPORTED,
-                AuditEntityType.CHAT_ROOM,
-                saved.getId(),
-                "Chat room reported: " + request.getReason()
-        );
-
-        return statusResponse(saved);
-    }
-
-    @Transactional
-    public AdminChatStatusUpdateResponse blockRoom(
-            UUID roomId,
-            AdminChatActionReasonRequest request
-    ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanUpdateRoom(room);
-
-        EmployeeAccount employee = permissionService.getCurrentEmployee();
-
-        room.setBlocked(true);
-        room.setBlockedByUser(null);
-        room.setNeedsAttention(true);
-        room.setStatus(ChatRoomStatus.BLOCKED);
-        room.setLastReportReason(request.getReason());
-
-        FamilyChatRoom saved = chatRoomRepository.save(room);
-
-        addChatTimeline(
-                saved,
-                CrmTimelineEventType.CHAT_ROOM_BLOCKED,
-                "Chat room blocked",
-                request.getReason(),
-                null,
-                ChatRoomStatus.BLOCKED.name()
-        );
-
-        auditLogService.record(
-                AuditAction.CHAT_ROOM_BLOCKED,
-                AuditEntityType.CHAT_ROOM,
-                saved.getId(),
-                "Chat room blocked by " + employee.getFullName()
-        );
-
-        return statusResponse(saved);
-    }
-
-    @Transactional
-    public AdminChatStatusUpdateResponse unblockRoom(
-            UUID roomId,
-            AdminChatActionReasonRequest request
-    ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanUpdateRoom(room);
-
-        ChatRoomStatus oldStatus = room.getStatus();
-
-        room.setBlocked(false);
-        room.setStatus(ChatRoomStatus.ACTIVE);
-        room.setNeedsAttention(false);
-
-        FamilyChatRoom saved = chatRoomRepository.save(room);
-
-        addChatTimeline(
-                saved,
-                CrmTimelineEventType.CHAT_ROOM_UNBLOCKED,
-                "Chat room unblocked",
-                request.getReason(),
-                oldStatus != null ? oldStatus.name() : null,
-                ChatRoomStatus.ACTIVE.name()
-        );
-
-        auditLogService.record(
-                AuditAction.CHAT_ROOM_UNBLOCKED,
-                AuditEntityType.CHAT_ROOM,
-                saved.getId(),
-                "Chat room unblocked"
-        );
-
-        return statusResponse(saved);
-    }
-
-    @Transactional
-    public AdminChatStatusUpdateResponse closeRoom(
-            UUID roomId,
-            AdminChatCloseRequest request
-    ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanUpdateRoom(room);
-
-        if (!isClosedStatus(request.getStatus())) {
-            throw new IllegalArgumentException("Only closed status is allowed");
+    private AdminChatParticipantResponse resolveFromParticipant(FamilyChatRoom room) {
+        if (room.getFromUser() != null || room.getFromProfile() != null) {
+            return toParticipant(room.getFromUser(), room.getFromProfile());
         }
 
-        ChatRoomStatus oldStatus = room.getStatus();
+        if (room.getRishtaRequest() != null) {
+            return toParticipant(
+                    room.getRishtaRequest().getSenderUser(),
+                    room.getRishtaRequest().getSenderProfile()
+            );
+        }
 
-        room.setStatus(request.getStatus());
-        room.setClosedAt(Instant.now());
-        room.setNeedsAttention(false);
-
-        FamilyChatRoom saved = chatRoomRepository.save(room);
-
-        addChatTimeline(
-                saved,
-                CrmTimelineEventType.CHAT_ROOM_CLOSED,
-                "Chat room closed",
-                request.getReason(),
-                oldStatus != null ? oldStatus.name() : null,
-                request.getStatus().name()
-        );
-
-        auditLogService.record(
-                AuditAction.CHAT_ROOM_CLOSED,
-                AuditEntityType.CHAT_ROOM,
-                saved.getId(),
-                "Chat room closed with status " + request.getStatus()
-        );
-
-        return statusResponse(saved);
+        return toParticipant(room.getBoyUser(), null);
     }
 
-    private AdminChatNoteResponse toNoteResponse(ChatMonitorNote note) {
-        return AdminChatNoteResponse.builder()
+    private AdminChatParticipantResponse resolveToParticipant(FamilyChatRoom room) {
+        if (room.getToUser() != null || room.getToProfile() != null) {
+            return toParticipant(room.getToUser(), room.getToProfile());
+        }
+
+        if (room.getRishtaRequest() != null) {
+            return toParticipant(
+                    room.getRishtaRequest().getReceiverUser(),
+                    room.getRishtaRequest().getReceiverProfile()
+            );
+        }
+
+        return toParticipant(room.getGirlUser(), null);
+    }
+
+    private String resolveStatusLabel(ChatRoomStatus status) {
+        if (status == null) {
+            return null;
+        }
+
+        return switch (status) {
+            case ACTIVE -> "Active";
+            case BLOCKED -> "Blocked";
+            case CLOSED -> "Closed";
+            case REPORTED -> "Reported";
+            default -> status.name();
+        };
+    }
+
+
+
+    private String resolveExpectedSpeaker(FamilyChatRoom room) {
+        if (room.getChatMode() == ChatMode.DIRECT_FAMILY) {
+            return "FAMILY_TO_FAMILY";
+        }
+
+        if (room.getChatMode() == ChatMode.CRM_ASSISTED) {
+            return "CRM_ASSISTED";
+        }
+
+        if (room.getChatMode() == ChatMode.CRM_TO_CRM) {
+            return "CRM_TO_CRM";
+        }
+
+        return "FAMILY_TO_FAMILY";
+    }
+
+    private Long countAttachments(UUID roomId) {
+        return chatMessageRepository.countByRoomIdAndMediaFileIsNotNull(roomId);
+    }
+
+
+    private AdminChatParticipantResponse toParticipant(
+            UserAccount user,
+            UserProfile profile
+    ) {
+        if (user == null && profile == null) {
+            return null;
+        }
+
+        UUID userId = user != null ? user.getId() : null;
+
+        if (userId == null && profile != null && profile.getUserAccount() != null) {
+            userId = profile.getUserAccount().getId();
+            user = profile.getUserAccount();
+        }
+
+        ParentProfile parent = userId != null
+                ? parentProfileRepository.findByUserAccountId(userId).orElse(null)
+                : null;
+
+        return AdminChatParticipantResponse.builder()
+                .userId(userId)
+                .familyUserId(userId)
+                .profileId(profile != null ? profile.getId() : null)
+                .displayId(profile != null ? profile.getDisplayId() : null)
+                .candidateName(profile != null ? profile.getCandidateFirstName() : null)
+                .parentName(parent != null ? parent.getParentName() : null)
+                .parentPhone(parent != null ? parent.getParentPhone() : user != null ? user.getPhone() : null)
+                .phone(user != null ? user.getPhone() : null)
+                .side(user != null && user.getSide() != null ? user.getSide().name() : null)
+                .age(profile != null ? profile.getCandidateAge() : null)
+                .district(parent != null ? parent.getDistrict() : null)
+                .state(parent != null ? parent.getState() : null)
+                .maslak(parent != null ? parent.getMaslak() : null)
+                .caste(parent != null ? parent.getCaste() : null)
+                .education(profile != null ? profile.getEducation() : null)
+                .professionTitle(profile != null ? profile.getProfessionTitle() : null)
+                .profilePhotoViewUrl(profile != null
+                        ? "/api/v1/admin/media/profiles/" + profile.getId() + "/primary-photo/view"
+                        : null)
+                .build();
+    }
+
+
+    private AdminChatMessageResponse toMessageResponse(FamilyChatMessage message) {
+        FamilyChatMessage reply = message.getReplyToMessage();
+
+        MediaFile media = message.getMediaFile();
+
+        return AdminChatMessageResponse.builder()
+
+                .messageId(message.getId())
+
+                .roomId(message.getRoom().getId())
+
+                .senderType(message.getSenderType())
+
+                .senderUserId(
+                        message.getSenderUser() != null
+                                ? message.getSenderUser().getId()
+                                : null
+                )
+
+                .senderEmployeeId(
+                        message.getSenderEmployee() != null
+                                ? message.getSenderEmployee().getId()
+                                : null
+                )
+
+                .senderEmployeeName(
+                        message.getSenderEmployee() != null
+                                ? message.getSenderEmployee().getFullName()
+                                : null
+                )
+
+                .senderDisplayName(resolveSenderName(message))
+                .assistedUserId(
+                        message.getAssistedUser() != null
+                                ? message.getAssistedUser().getId()
+                                : null
+                )
+
+                .assistedFamilyName(
+                        message.getAssistedFamilyName()
+                )
+
+                .messageType(message.getMessageType())
+
+                .content(message.getContent())
+
+                .replyToMessageId(
+                        message.getReplyToMessage() != null
+                                ? message.getReplyToMessage().getId()
+                                : null
+                )
+
+                .mediaFileId(
+                        media != null
+                                ? media.getId()
+                                : null
+                )
+
+                .mediaType(
+                        media != null
+                                ? media.getMediaType()
+                                : null
+                )
+
+                .mediaPreviewUrl(
+                        media != null
+                                ? "/api/v1/admin/chat-monitor/rooms/"
+                                + message.getRoom().getId()
+                                + "/messages/"
+                                + message.getId()
+                                + "/media/"
+                                + media.getId()
+                                + "/view"
+                                : null
+                )
+
+                .fileName(
+                        media != null
+                                ? media.getOriginalFileName()
+                                : null
+                )
+
+                .fileSizeBytes(
+                        media != null
+                                ? media.getFileSizeBytes()
+                                : null
+                )
+
+                .contentType(
+                        media != null
+                                ? media.getContentType()
+                                : null
+                )
+
+                .deliveryStatus(message.getDeliveryStatus())
+
+                .moderationStatus(message.getModerationStatus())
+
+                .editedAt(message.getEditedAt())
+
+                .sentAt(message.getSentAt())
+
+                .readAt(message.getReadAt())
+
+                .build();
+    }
+
+
+    private String resolveSenderName(
+            FamilyChatMessage message
+    ) {
+
+        if (message.getSenderEmployee() != null) {
+            return message.getSenderEmployee().getFullName();
+        }
+
+        if (message.getSenderUser() != null) {
+
+            ParentProfile parent =
+                    parentProfileRepository
+                            .findByUserAccountId(
+                                    message.getSenderUser().getId()
+                            )
+                            .orElse(null);
+
+            if (parent != null && parent.getParentName() != null) {
+                return parent.getParentName();
+            }
+
+            UserProfile profile =
+                    userProfileRepository
+                            .findByUserAccountId(
+                                    message.getSenderUser().getId()
+                            )
+                            .orElse(null);
+
+            if (profile != null) {
+                return profile.getCandidateFirstName();
+            }
+
+            return message.getSenderUser().getPhone();
+        }
+
+        return "Unknown";
+    }
+
+
+    private AdminChatInternalNoteResponse toNoteResponse(ChatRoomInternalNote note) {
+        return AdminChatInternalNoteResponse.builder()
                 .noteId(note.getId())
                 .roomId(note.getRoom().getId())
+                .employeeId(note.getEmployee().getId())
+                .employeeName(note.getEmployee().getFullName())
                 .note(note.getNote())
-                .createdByEmployeeId(note.getCreatedByEmployee() != null ? note.getCreatedByEmployee().getId() : null)
-                .createdByName(note.getCreatedByName())
                 .createdAt(note.getCreatedAt())
                 .build();
     }
 
-    private AdminChatStatusUpdateResponse statusResponse(FamilyChatRoom room) {
-        return AdminChatStatusUpdateResponse.builder()
-                .roomId(room.getId())
-                .status(room.getStatus())
-                .statusLabel(statusLabel(room.getStatus()))
-                .updatedAt(room.getUpdatedAt())
-                .build();
+
+    private String preview(String content) {
+        if (content == null) {
+            return null;
+        }
+
+        return content.length() <= 80 ? content : content.substring(0, 80) + "...";
     }
 
-    private boolean isClosedStatus(ChatRoomStatus status) {
-        return status == ChatRoomStatus.CLOSED
-                || status == ChatRoomStatus.CLOSED_SUCCESS
-                || status == ChatRoomStatus.CLOSED_REJECTED
-                || status == CLOSED_NO_RESPONSE
-                || status == ChatRoomStatus.CLOSED_BY_ADMIN;
+    private EmployeeAccount getCurrentEmployee() {
+        UUID employeeId = AuthUser.getCurrentActorId();
+
+        return employeeAccountRepository.findById(employeeId)
+                .orElseThrow(() -> new EntityNotFoundException("Employee not found"));
     }
 
-    private void addChatTimeline(
-            FamilyChatRoom room,
-            CrmTimelineEventType eventType,
-            String title,
-            String description,
-            String oldValue,
-            String newValue
-    ) {
-        if (room.getCrmCase() == null) {
+    private boolean isAdmin(EmployeeAccount employee) {
+        return employee.getRole() == EmployeeRole.SUPER_ADMIN
+                || employee.getRole() == EmployeeRole.ADMIN;
+    }
+
+    private void assertCanAccessRoom(EmployeeAccount employee, FamilyChatRoom room) {
+        if (isAdmin(employee)) {
             return;
         }
 
-        EmployeeAccount employee = permissionService.getCurrentEmployee();
+        if (room.getAssignedEmployee() == null
+                || !room.getAssignedEmployee().getId().equals(employee.getId())) {
+            throw new AccessDeniedException("You can access only assigned chat rooms");
+        }
+    }
 
-        CrmCaseTimeline timeline = new CrmCaseTimeline();
-        timeline.setCrmCase(room.getCrmCase());
-        timeline.setEventType(eventType);
-        timeline.setTitle(title);
-        timeline.setDescription(description);
-        timeline.setActorEmployee(employee);
-        timeline.setActorName(employee != null ? employee.getFullName() : "System");
-        timeline.setOldValue(oldValue);
-        timeline.setNewValue(newValue);
-        timeline.setMetadata("{\"roomId\":\"" + room.getId() + "\"}");
+    @Transactional(readOnly = true)
+    public AdminChatDashboardResponse getDashboard() {
 
-        crmCaseTimelineRepository.save(timeline);
+        return AdminChatDashboardResponse.builder()
+
+                .totalRooms(chatRoomRepository.count())
+
+                .activeRooms(
+                        chatRoomRepository.countByStatus(ChatRoomStatus.ACTIVE)
+                )
+
+                .blockedRooms(
+                        chatRoomRepository.countByBlockedTrue()
+                )
+
+                .closedRooms(
+                        chatRoomRepository.countByStatus(ChatRoomStatus.CLOSED)
+                )
+
+                .reportedRooms(
+                        chatRoomRepository.countByReportedTrue()
+                )
+
+                .needsAttentionRooms(
+                        chatRoomRepository.countByNeedsAttentionTrue()
+                )
+
+                .unassignedRooms(
+                        chatRoomRepository.countByAssignedEmployeeIsNull()
+                )
+
+                .crmAssignedRooms(
+                        chatRoomRepository.countByAssignedEmployeeIsNotNull()
+                )
+
+                .totalMessages(
+                        chatMessageRepository.count()
+                )
+
+                .build();
     }
 
     @Transactional
-    public AdminChatAssignmentResponse updateAssignment(
+    public void assignRoom(
             UUID roomId,
-            AdminChatAssignmentRequest request
+            UUID employeeId
     ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
 
-        permissionService.assertCanAssignRoom();
+        EmployeeAccount actor = getCurrentEmployee();
 
-        EmployeeAccount employee = employeeAccountRepository.findById(request.getAssignedEmployeeId())
-                .orElseThrow(() -> new EntityNotFoundException("Assigned employee not found"));
+        if (!isAdmin(actor)) {
+            throw new AccessDeniedException(
+                    "Only admin can assign rooms"
+            );
+        }
 
-        String oldAssignee = room.getAssignedEmployee() != null
-                ? room.getAssignedEmployee().getFullName()
-                : null;
+        FamilyChatRoom room =
+                chatRoomRepository.findById(roomId)
+                        .orElseThrow(
+                                () -> new EntityNotFoundException("Room not found")
+                        );
+
+        EmployeeAccount employee =
+                employeeAccountRepository.findById(employeeId)
+                        .orElseThrow(
+                                () -> new EntityNotFoundException("Employee not found")
+                        );
 
         room.setAssignedEmployee(employee);
 
-        if (room.getCrmCase() != null) {
-            room.getCrmCase().setAssignedEmployee(employee);
-        }
+        chatRoomRepository.save(room);
 
-        FamilyChatRoom saved = chatRoomRepository.save(room);
-
-        if (request.getNote() != null && !request.getNote().isBlank()) {
-            AdminChatNoteRequest noteRequest = new AdminChatNoteRequest();
-            noteRequest.setNote(request.getNote());
-            addNote(roomId, noteRequest);
-        }
-
-        addChatTimeline(
-                saved,
-                CrmTimelineEventType.CHAT_ASSIGNMENT_UPDATED,
-                "Chat assignment updated",
-                "Chat assigned to " + employee.getFullName(),
-                oldAssignee,
-                employee.getFullName()
+        adminChatMonitorEventPublisher.publish(
+                AdminChatMonitorEvent.builder()
+                        .event(ChatSocketEventType.ADMIN_ROOM_ASSIGNED)
+                        .roomId(room.getId())
+                        .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                        .title("Chat room assigned")
+                        .message("A chat room was assigned to a CRM/admin.")
+                        .emittedAt(Instant.now())
+                        .build()
         );
 
         auditLogService.record(
                 AuditAction.CHAT_ASSIGNMENT_UPDATED,
                 AuditEntityType.CHAT_ROOM,
-                saved.getId(),
-                "Chat room assigned to " + employee.getFullName()
+                roomId,
+                "Chat room assigned"
         );
-
-        return AdminChatAssignmentResponse.builder()
-                .roomId(saved.getId())
-                .assignedEmployeeId(employee.getId())
-                .assignedEmployeeName(employee.getFullName())
-                .build();
     }
 
     @Transactional
-    public AdminChatDecisionResponse recordDecision(
-            UUID roomId,
-            AdminChatDecisionRequest request
-    ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanUpdateRoom(room);
+    public void blockRoom(UUID roomId){
 
-        EmployeeAccount employee = permissionService.getCurrentEmployee();
+        FamilyChatRoom room=findRoom(roomId);
 
-        ChatFamilyDecisionLog decisionLog = new ChatFamilyDecisionLog();
-        decisionLog.setRoom(room);
-        decisionLog.setDecision(request.getDecision());
-        decisionLog.setNote(request.getNote());
-        decisionLog.setNextFollowUpAt(request.getNextFollowUpAt());
-        decisionLog.setCreatedByEmployee(employee);
-        decisionLog.setCreatedByName(employee.getFullName());
+        room.setBlocked(true);
 
-        chatFamilyDecisionLogRepository.save(decisionLog);
+        room.setStatus(ChatRoomStatus.BLOCKED);
 
-        Proposal proposal = room.getProposal();
+        chatRoomRepository.save(room);
 
-        if (proposal != null) {
-            ProposalStatus newStatus = resolveProposalStatusFromDecision(request.getDecision());
-
-            if (newStatus != null) {
-                proposal.setStatus(newStatus);
-                proposal.setLastUpdatedByEmployee(employee);
-                proposal.setLastUpdatedByName(employee.getFullName());
-                proposal.setLastUpdatedAt(Instant.now());
-                proposalRepository.save(proposal);
-            }
-        }
-
-        if (request.getNextFollowUpAt() != null) {
-            createFollowUpInternal(
-                    room,
-                    request.getNextFollowUpAt(),
-                    CrmFollowUpChannel.PHONE,
-                    request.getNote() != null && !request.getNote().isBlank()
-                            ? request.getNote()
-                            : "Chat decision follow-up"
-            );
-        }
-
-        updateRoomStatusFromDecision(room, request.getDecision());
-        FamilyChatRoom savedRoom = chatRoomRepository.save(room);
-
-        RishtaPipelineStage pipelineStage = proposal != null
-                ? stageResolver.resolve(proposal.getStatus())
-                : null;
-
-        addChatTimeline(
-                savedRoom,
-                CrmTimelineEventType.CHAT_DECISION_RECORDED,
-                "Family decision recorded",
-                request.getDecision().name(),
-                null,
-                request.getDecision().name()
+        adminChatMonitorEventPublisher.publish(
+                AdminChatMonitorEvent.builder()
+                        .event(ChatSocketEventType.ADMIN_ROOM_BLOCKED)
+                        .roomId(room.getId())
+                        .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                        .title("Chat room blocked")
+                        .message("A chat room has been blocked.")
+                        .emittedAt(Instant.now())
+                        .build()
         );
 
         auditLogService.record(
-                AuditAction.CHAT_DECISION_RECORDED,
+                AuditAction.CHAT_ROOM_BLOCKED,
                 AuditEntityType.CHAT_ROOM,
-                savedRoom.getId(),
-                "Family decision recorded: " + request.getDecision()
+                roomId,
+                "Chat room blocked"
         );
-
-        return AdminChatDecisionResponse.builder()
-                .roomId(savedRoom.getId())
-                .decision(request.getDecision())
-                .proposalStatus(proposal != null ? proposal.getStatus() : null)
-                .pipelineStage(pipelineStage)
-                .nextFollowUpAt(request.getNextFollowUpAt())
-                .build();
     }
 
     @Transactional
-    public AdminChatFollowUpResponse scheduleFollowUp(
-            UUID roomId,
-            AdminChatFollowUpRequest request
-    ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanUpdateRoom(room);
+    public void unblockRoom(UUID roomId){
 
-        CrmFollowUp saved = createFollowUpInternal(
-                room,
-                request.getScheduledAt(),
-                request.getChannel(),
-                request.getPurpose()
+        FamilyChatRoom room=findRoom(roomId);
+
+        room.setBlocked(false);
+
+        room.setStatus(ChatRoomStatus.ACTIVE);
+
+        chatRoomRepository.save(room);
+
+        adminChatMonitorEventPublisher.publish(
+                AdminChatMonitorEvent.builder()
+                        .event(ChatSocketEventType.ADMIN_ROOM_UNBLOCKED)
+                        .roomId(room.getId())
+                        .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                        .title("Chat room unblocked")
+                        .message("A chat room has been unblocked.")
+                        .emittedAt(Instant.now())
+                        .build()
         );
 
-        addChatTimeline(
-                room,
-                CrmTimelineEventType.CHAT_FOLLOW_UP_SCHEDULED,
-                "Chat follow-up scheduled",
-                request.getPurpose(),
-                null,
-                request.getScheduledAt().toString()
+
+        auditLogService.record(
+                AuditAction.CHAT_ROOM_UNBLOCKED,
+                AuditEntityType.CHAT_ROOM,
+                roomId,
+                "Chat room unblocked"
+        );
+    }
+
+    @Transactional
+    public void closeRoomAdmin(UUID roomId){
+
+        FamilyChatRoom room=findRoom(roomId);
+
+        room.setStatus(ChatRoomStatus.CLOSED);
+
+        room.setClosedAt(Instant.now());
+
+        chatRoomRepository.save(room);
+
+        adminChatMonitorEventPublisher.publish(
+                AdminChatMonitorEvent.builder()
+                        .event(ChatSocketEventType.ADMIN_ROOM_CLOSED)
+                        .roomId(room.getId())
+                        .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                        .title("Chat room closed")
+                        .message("A chat room has been closed.")
+                        .emittedAt(Instant.now())
+                        .build()
+        );
+
+
+        auditLogService.record(
+                AuditAction.CHAT_ROOM_CLOSED,
+                AuditEntityType.CHAT_ROOM,
+                roomId,
+                "Closed by admin"
+        );
+    }
+
+    @Transactional
+    public void hideMessage(UUID messageId){
+
+        FamilyChatMessage message=findMessage(messageId);
+
+        message.setModerationStatus(
+                ChatModerationStatus.HIDDEN
+        );
+
+        chatMessageRepository.save(message);
+
+        FamilyChatRoom room = message.getRoom();
+
+        adminChatMonitorEventPublisher.publish(
+                AdminChatMonitorEvent.builder()
+                        .event(ChatSocketEventType.ADMIN_MESSAGE_HIDDEN)
+                        .roomId(room.getId())
+                        .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                        .title("Message hidden")
+                        .message("A chat message was hidden by admin.")
+                        .emittedAt(Instant.now())
+                        .build()
         );
 
         auditLogService.record(
-                AuditAction.CHAT_FOLLOW_UP_SCHEDULED,
-                AuditEntityType.CHAT_ROOM,
-                room.getId(),
-                "Chat follow-up scheduled"
+                AuditAction.CHAT_MESSAGE_MODERATED,
+                AuditEntityType.CHAT_MESSAGE,
+                messageId,
+                "Message hidden"
         );
-
-        return AdminChatFollowUpResponse.builder()
-                .followUpId(saved.getId())
-                .roomId(room.getId())
-                .scheduledAt(saved.getScheduledAt())
-                .channel(saved.getChannel())
-                .purpose(saved.getPurpose())
-                .build();
-    }
-
-    @Transactional(readOnly = true)
-    public AdminChatHistoryPageResponse<AdminChatNoteResponse> getNotes(
-            UUID roomId,
-            int page,
-            int size
-    ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanViewRoom(room);
-
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0),
-                Math.min(Math.max(size, 1), 100)
-        );
-
-        Page<ChatMonitorNote> result =
-                chatMonitorNoteRepository.findByRoomIdOrderByCreatedAtDesc(roomId, pageable);
-
-        return AdminChatHistoryPageResponse.<AdminChatNoteResponse>builder()
-                .items(result.getContent().stream().map(this::toNoteResponse).toList())
-                .page(result.getNumber())
-                .size(result.getSize())
-                .totalElements(result.getTotalElements())
-                .totalPages(result.getTotalPages())
-                .last(result.isLast())
-                .build();
-    }
-
-    @Transactional(readOnly = true)
-    public AdminChatHistoryPageResponse<AdminChatDecisionLogResponse> getDecisions(
-            UUID roomId,
-            int page,
-            int size
-    ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanViewRoom(room);
-
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0),
-                Math.min(Math.max(size, 1), 100)
-        );
-
-        Page<ChatFamilyDecisionLog> result =
-                chatFamilyDecisionLogRepository.findByRoomIdOrderByCreatedAtDesc(roomId, pageable);
-
-        return AdminChatHistoryPageResponse.<AdminChatDecisionLogResponse>builder()
-                .items(result.getContent().stream().map(this::toDecisionLogResponse).toList())
-                .page(result.getNumber())
-                .size(result.getSize())
-                .totalElements(result.getTotalElements())
-                .totalPages(result.getTotalPages())
-                .last(result.isLast())
-                .build();
-    }
-
-    @Transactional(readOnly = true)
-    public AdminChatHistoryPageResponse<AdminChatFollowUpResponse> getFollowUps(
-            UUID roomId,
-            int page,
-            int size
-    ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
-        permissionService.assertCanViewRoom(room);
-
-        if (room.getProposal() == null) {
-            return AdminChatHistoryPageResponse.<AdminChatFollowUpResponse>builder()
-                    .items(List.of())
-                    .page(0)
-                    .size(size)
-                    .totalElements(0)
-                    .totalPages(0)
-                    .last(true)
-                    .build();
-        }
-
-        List<AdminChatFollowUpResponse> items =
-                crmFollowUpRepository.findByProposal_IdOrderByScheduledAtDesc(room.getProposal().getId())
-                        .stream()
-                        .skip((long) Math.max(page, 0) * Math.min(Math.max(size, 1), 100))
-                        .limit(Math.min(Math.max(size, 1), 100))
-                        .map(followUp -> AdminChatFollowUpResponse.builder()
-                                .followUpId(followUp.getId())
-                                .roomId(room.getId())
-                                .scheduledAt(followUp.getScheduledAt())
-                                .channel(followUp.getChannel())
-                                .purpose(followUp.getPurpose())
-                                .build())
-                        .toList();
-
-        long total = crmFollowUpRepository.findByProposal_IdOrderByScheduledAtDesc(room.getProposal().getId()).size();
-        int safeSize = Math.min(Math.max(size, 1), 100);
-
-        return AdminChatHistoryPageResponse.<AdminChatFollowUpResponse>builder()
-                .items(items)
-                .page(Math.max(page, 0))
-                .size(safeSize)
-                .totalElements(total)
-                .totalPages(total == 0 ? 0 : (int) Math.ceil((double) total / safeSize))
-                .last(((long) (Math.max(page, 0) + 1) * safeSize) >= total)
-                .build();
-    }
-
-    private CrmFollowUp createFollowUpInternal(
-            FamilyChatRoom room,
-            Instant scheduledAt,
-            CrmFollowUpChannel channel,
-            String purpose
-    ) {
-        if (room.getCrmCase() == null) {
-            throw new IllegalStateException("Chat room is not linked with a CRM case");
-        }
-
-        EmployeeAccount employee = room.getAssignedEmployee() != null
-                ? room.getAssignedEmployee()
-                : permissionService.getCurrentEmployee();
-
-        CrmFollowUp followUp = new CrmFollowUp();
-        followUp.setCrmCase(room.getCrmCase());
-        followUp.setProposal(room.getProposal());
-        followUp.setAssignedEmployee(employee);
-        followUp.setScheduledAt(scheduledAt);
-        followUp.setStatus(CrmFollowUpStatus.SCHEDULED);
-        followUp.setChannel(channel);
-        followUp.setPurpose(purpose.trim());
-
-        room.getCrmCase().setNextFollowUpAt(scheduledAt);
-
-        return crmFollowUpRepository.save(followUp);
-    }
-
-    private ProposalStatus resolveProposalStatusFromDecision(ChatFamilyDecision decision) {
-        return switch (decision) {
-            case INTERESTED -> INTERESTED;
-            case NOT_INTERESTED -> ProposalStatus.NOT_INTERESTED;
-            case MEETING_SCHEDULED -> ProposalStatus.MEETING_DISCUSSION;
-            case ACCEPTED, ENGAGED -> ProposalStatus.ACCEPTED;
-            case REJECTED -> ProposalStatus.REJECTED;
-            case CLOSED_NO_RESPONSE -> ProposalStatus.EXPIRED;
-            case FOLLOW_UP_REQUIRED -> null;
-        };
-    }
-
-    private void updateRoomStatusFromDecision(
-            FamilyChatRoom room,
-            ChatFamilyDecision decision
-    ) {
-        switch (decision) {
-            case ACCEPTED, ENGAGED -> {
-                room.setStatus(ChatRoomStatus.CLOSED_SUCCESS);
-                room.setClosedAt(Instant.now());
-                room.setNeedsAttention(false);
-            }
-            case REJECTED, NOT_INTERESTED -> {
-                room.setStatus(ChatRoomStatus.CLOSED_REJECTED);
-                room.setClosedAt(Instant.now());
-                room.setNeedsAttention(false);
-            }
-            case CLOSED_NO_RESPONSE -> {
-                room.setStatus(CLOSED_NO_RESPONSE);
-                room.setClosedAt(Instant.now());
-                room.setNeedsAttention(false);
-            }
-            case FOLLOW_UP_REQUIRED, MEETING_SCHEDULED -> {
-                room.setStatus(ChatRoomStatus.NEEDS_CRM_ATTENTION);
-                room.setNeedsAttention(true);
-            }
-            case INTERESTED -> {
-                room.setStatus(ChatRoomStatus.ACTIVE);
-                room.setNeedsAttention(false);
-            }
-        }
-    }
-
-    private AdminChatDecisionLogResponse toDecisionLogResponse(ChatFamilyDecisionLog log) {
-        return AdminChatDecisionLogResponse.builder()
-                .decisionId(log.getId())
-                .roomId(log.getRoom().getId())
-                .decision(log.getDecision())
-                .note(log.getNote())
-                .nextFollowUpAt(log.getNextFollowUpAt())
-                .createdByEmployeeId(log.getCreatedByEmployee() != null ? log.getCreatedByEmployee().getId() : null)
-                .createdByName(log.getCreatedByName())
-                .createdAt(log.getCreatedAt())
-                .build();
     }
 
     @Transactional
-    public ChatMessageResponse sendCrmMessage(
+    public void restoreMessage(UUID messageId){
+
+        FamilyChatMessage message=findMessage(messageId);
+
+        message.setModerationStatus(
+                ChatModerationStatus.CLEAN
+        );
+
+        chatMessageRepository.save(message);
+
+        FamilyChatRoom room = message.getRoom();
+
+        adminChatMonitorEventPublisher.publish(
+                AdminChatMonitorEvent.builder()
+                        .event(ChatSocketEventType.ADMIN_MESSAGE_RESTORED)
+                        .roomId(room.getId())
+                        .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
+                        .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
+                        .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
+                        .title("Message restored")
+                        .message("A chat message was restored by admin.")
+                        .emittedAt(Instant.now())
+                        .build()
+        );
+
+
+        auditLogService.record(
+                AuditAction.CHAT_MESSAGE_MODERATED,
+                AuditEntityType.CHAT_MESSAGE,
+                messageId,
+                "Message restored"
+        );
+    }
+
+    private FamilyChatRoom findRoom(UUID id){
+
+        return chatRoomRepository.findById(id)
+                .orElseThrow(
+                        ()->new EntityNotFoundException("Room not found")
+                );
+    }
+
+    private FamilyChatMessage findMessage(UUID id){
+
+        return chatMessageRepository.findById(id)
+                .orElseThrow(
+                        ()->new EntityNotFoundException("Message not found")
+                );
+    }
+
+
+    @Transactional
+    public AdminChatMessageResponse sendCrmMessage(
             UUID roomId,
             AdminSendChatMessageRequest request
     ) {
-        FamilyChatRoom room = getRoomOrThrow(roomId);
+        validateCrmMessageRequest(request);
 
-        permissionService.assertCanUpdateRoom(room);
+        EmployeeAccount actor = getCurrentEmployee();
+
+        FamilyChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("Chat room not found"));
+
+        assertCanAccessRoom(actor, room);
 
         if (room.isBlocked()) {
-            throw new IllegalArgumentException("This chat room is blocked");
+            throw new IllegalArgumentException("Blocked room cannot receive messages");
         }
 
-        if (room.getStatus() != ChatRoomStatus.ACTIVE
-                && room.getStatus() != ChatRoomStatus.NEEDS_CRM_ATTENTION
-                && room.getStatus() != ChatRoomStatus.PENDING_RESPONSE) {
-            throw new IllegalArgumentException("This chat room is not open for messaging");
+        if (room.getStatus() != ChatRoomStatus.ACTIVE) {
+            throw new IllegalArgumentException("Only active rooms can receive messages");
         }
 
-        EmployeeAccount employee = permissionService.getCurrentEmployee();
-
-        UserAccount assistedUser = null;
-
-        if (request.getAssistedUserId() != null) {
-            assistedUser = userAccountRepository.findById(request.getAssistedUserId())
-                    .orElseThrow(() -> new EntityNotFoundException("Assisted user not found"));
-
-            boolean belongsToRoom =
-                    room.getBoyUser().getId().equals(assistedUser.getId())
-                            || room.getGirlUser().getId().equals(assistedUser.getId());
-
-            if (!belongsToRoom) {
-                throw new IllegalArgumentException("Assisted user does not belong to this chat room");
-            }
-        }
-
-        MediaFile media = null;
-
-        if (request.getMediaFileId() != null) {
-            media = mediaFileRepository.findById(request.getMediaFileId())
-                    .orElseThrow(() -> new EntityNotFoundException("Media file not found"));
-        }
+        UserAccount assistedUser = resolveAssistedUser(room, request.getAssistedUserId());
 
         FamilyChatMessage replyTo = null;
 
@@ -1471,39 +1043,33 @@ public class AdminChatMonitorService {
             replyTo = chatMessageRepository.findById(request.getReplyToMessageId())
                     .orElseThrow(() -> new EntityNotFoundException("Reply message not found"));
 
-            if (!replyTo.getRoom().getId().equals(roomId)) {
-                throw new IllegalArgumentException("Reply message does not belong to this chat room");
+            if (!replyTo.getRoom().getId().equals(room.getId())) {
+                throw new IllegalArgumentException("Reply message does not belong to this room");
             }
         }
 
+        MediaFile media = null;
+
+        if (isMediaMessage(request.getMessageType())) {
+            media = mediaFileRepository.findByIdAndDeletedFalse(request.getMediaFileId())
+                    .orElseThrow(() -> new EntityNotFoundException("Media file not found"));
+
+            if (!media.getUserAccount().getId().equals(assistedUser.getId())) {
+                throw new IllegalArgumentException("Media does not belong to assisted family");
+            }
+        }
+
+        String content = request.getContent() == null ? "" : request.getContent().trim();
+
         FamilyChatMessage message = new FamilyChatMessage();
         message.setRoom(room);
-
-        /*
-         * CRM message is not pretending to be a family.
-         * senderUser is assisted user only for room-side context.
-         */
-        message.setSenderUser(
-                assistedUser != null
-                        ? assistedUser
-                        : room.getBoyUser()
-        );
-
-        message.setSenderType(ChatSenderType.CRM);
-        message.setSenderEmployee(employee);
+        message.setSenderUser(assistedUser);
+        message.setSenderType(ChatSenderType.CRM_AGENT);
+        message.setSenderEmployee(actor);
         message.setAssistedUser(assistedUser);
-        message.setAssistedFamilyName(
-                assistedUser != null
-                        ? resolveFamilyDisplayName(assistedUser.getId())
-                        : null
-        );
-
-        message.setMessageType(
-                request.getMessageType() != null
-                        ? request.getMessageType()
-                        : ChatMessageType.TEXT
-        );
-        message.setContent(request.getContent());
+        message.setAssistedFamilyName(resolveFamilyName(assistedUser));
+        message.setMessageType(request.getMessageType());
+        message.setContent(content);
         message.setMediaFile(media);
         message.setReplyToMessage(replyTo);
         message.setDeliveryStatus(ChatDeliveryStatus.SENT);
@@ -1511,16 +1077,18 @@ public class AdminChatMonitorService {
 
         FamilyChatMessage saved = chatMessageRepository.save(message);
 
-        updateRoomReadModelAfterCrmMessage(room, saved, employee);
-        chatRoomRepository.save(room);
-
-        ChatMessageResponse response = toAdminVisibleCustomerMessage(saved);
-
-        publishRoomEvent(
-                roomId,
-                ChatSocketEventType.CRM_ASSISTED_MESSAGE,
-                response
+        room.setLastMessageType(saved.getMessageType());
+        room.setLastMessageText(
+                isMediaMessage(saved.getMessageType()) && media != null
+                        ? media.getOriginalFileName()
+                        : preview(content)
         );
+        room.setLastMessageAt(saved.getSentAt());
+        room.setLastMessageByName(actor.getFullName());
+        room.setMessageCount(room.getMessageCount() + 1);
+        room.setUpdatedAt(Instant.now());
+
+        chatRoomRepository.save(room);
 
         adminChatMonitorEventPublisher.publish(
                 AdminChatMonitorEvent.builder()
@@ -1529,195 +1097,444 @@ public class AdminChatMonitorService {
                         .proposalId(room.getProposal() != null ? room.getProposal().getId() : null)
                         .crmCaseId(room.getCrmCase() != null ? room.getCrmCase().getId() : null)
                         .assignedEmployeeId(room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null)
-                        .title("CRM message sent")
-                        .message("A CRM-assisted message was sent.")
+                        .title(media != null ? "CRM media message sent" : "CRM message sent")
+                        .message(media != null
+                                ? "A CRM media message was sent in a family chat."
+                                : "A CRM message was sent in a family chat.")
                         .emittedAt(Instant.now())
                         .build()
         );
 
-        notifyRoomFamilies(room);
+        publishCommunicationCenterEventForCrmMessage(room, saved);
 
         auditLogService.record(
                 AuditAction.CHAT_MESSAGE_SENT_BY_CRM,
                 AuditEntityType.CHAT_MESSAGE,
                 saved.getId(),
-                "CRM message sent by " + employee.getFullName()
+                media != null
+                        ? "CRM sent media message in family chat"
+                        : "CRM sent message in family chat"
         );
 
-        return response;
+        return toMessageResponse(saved);
     }
 
-    private void updateRoomReadModelAfterCrmMessage(
+    private boolean isMediaMessage(ChatMessageType messageType) {
+        return messageType == ChatMessageType.IMAGE
+                || messageType == ChatMessageType.DOCUMENT;
+    }
+
+
+    private void validateCrmMessageRequest(AdminSendChatMessageRequest request) {
+        if (request.getAssistedUserId() == null) {
+            throw new IllegalArgumentException("Assisted user is required");
+        }
+
+        if (request.getMessageType() == null) {
+            throw new IllegalArgumentException("Message type is required");
+        }
+
+        if (request.getMessageType() == ChatMessageType.TEXT
+                && (request.getContent() == null || request.getContent().isBlank())) {
+            throw new IllegalArgumentException("Message content is required");
+        }
+
+        if (isMediaMessage(request.getMessageType())
+                && request.getMediaFileId() == null) {
+            throw new IllegalArgumentException("Media file is required");
+        }
+
+        if (request.getMessageType() == ChatMessageType.SYSTEM) {
+            throw new IllegalArgumentException("CRM cannot send SYSTEM messages");
+        }
+
+        if (request.getContent() != null && request.getContent().length() > 1000) {
+            throw new IllegalArgumentException("Message content must be less than 1000 characters");
+        }
+    }
+
+
+
+    private UserAccount resolveAssistedUser(
             FamilyChatRoom room,
-            FamilyChatMessage message,
-            EmployeeAccount employee
+            UUID assistedUserId
     ) {
-        room.setLastMessageText(preview(message.getContent()));
-        room.setLastMessageType(message.getMessageType());
-        room.setLastMessageAt(message.getSentAt());
-        room.setLastMessageByName(employee.getFullName());
-        room.setMessageCount(room.getMessageCount() + 1);
-        room.setNeedsAttention(false);
-        room.setUpdatedAt(Instant.now());
+        if (room.getBoyUser() != null && room.getBoyUser().getId().equals(assistedUserId)) {
+            return room.getBoyUser();
+        }
+
+        if (room.getGirlUser() != null && room.getGirlUser().getId().equals(assistedUserId)) {
+            return room.getGirlUser();
+        }
+
+        throw new AccessDeniedException("Assisted user must be a participant of this room");
     }
 
-    private ChatMessageResponse toAdminVisibleCustomerMessage(FamilyChatMessage message) {
-        return ChatMessageResponse.builder()
-                .messageId(message.getId())
-                .roomId(message.getRoom().getId())
+    private String resolveFamilyName(UserAccount user) {
+        if (user == null) {
+            return null;
+        }
 
-                .senderUserId(message.getSenderUser() != null ? message.getSenderUser().getId() : null)
-                .senderDisplayName(message.getSenderEmployee() != null
-                        ? message.getSenderEmployee().getFullName()
-                        : "CRM")
+        return parentProfileRepository.findByUserAccountId(user.getId())
+                .map(ParentProfile::getParentName)
+                .orElse(user.getPhone());
+    }
 
-                .senderType(message.getSenderType())
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> viewMessageMedia(
+            UUID roomId,
+            UUID messageId,
+            UUID mediaId
+    ) {
+        EmployeeAccount actor = getCurrentEmployee();
 
-                .senderEmployeeId(message.getSenderEmployee() != null
-                        ? message.getSenderEmployee().getId()
-                        : null)
+        FamilyChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("Chat room not found"));
 
-                .senderEmployeeName(message.getSenderEmployee() != null
-                        ? message.getSenderEmployee().getFullName()
-                        : null)
+        assertCanAccessRoom(actor, room);
 
-                .assistedUserId(message.getAssistedUser() != null
-                        ? message.getAssistedUser().getId()
-                        : null)
+        FamilyChatMessage message = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new EntityNotFoundException("Message not found"));
 
-                .assistedFamilyName(message.getAssistedFamilyName())
+        if (!message.getRoom().getId().equals(room.getId())) {
+            throw new AccessDeniedException("Message does not belong to this chat room");
+        }
 
-                .messageType(message.getMessageType())
-                .content(message.getContent())
+        if (message.getMediaFile() == null
+                || !message.getMediaFile().getId().equals(mediaId)) {
+            throw new EntityNotFoundException("Media not found for this message");
+        }
 
-                .mediaFileId(message.getMediaFile() != null ? message.getMediaFile().getId() : null)
-                .mediaType(message.getMediaFile() != null ? message.getMediaFile().getMediaType().name() : null)
+        MediaFile media = message.getMediaFile();
 
-                .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
-                .replyPreview(message.getReplyToMessage() != null ? preview(message.getReplyToMessage().getContent()) : null)
+        if (media.isDeleted()) {
+            throw new EntityNotFoundException("Media file not found");
+        }
 
-                .deliveryStatus(message.getDeliveryStatus())
-                .mine(false)
-                .edited(message.getEditedAt() != null)
-                .deleted(message.getDeletedAt() != null)
+        byte[] bytes = fileStorageService.load(media.getStorageKey());
 
-                .sentAt(message.getSentAt())
-                .deliveredAt(message.getDeliveredAt())
-                .readAt(message.getReadAt())
-                .editedAt(message.getEditedAt())
-                .deletedAt(message.getDeletedAt())
+        auditLogService.record(
+                AuditAction.SYSTEM_ACTION,
+                AuditEntityType.CHAT_MESSAGE,
+                message.getId(),
+                "Admin viewed chat media"
+        );
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(media.getContentType()))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + media.getOriginalFileName() + "\""
+                )
+                .body(bytes);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminChatReportPageResponse getReports(int page, int size) {
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                Math.min(Math.max(size, 1), 100),
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+
+        Page<ChatMessageReport> result =
+                reportRepository.findAllByOrderByCreatedAtDesc(pageable);
+
+        return AdminChatReportPageResponse.builder()
+                .items(result.getContent().stream().map(this::toReportResponse).toList())
+                .page(result.getNumber())
+                .size(result.getSize())
+                .totalElements(result.getTotalElements())
+                .totalPages(result.getTotalPages())
+                .last(result.isLast())
                 .build();
     }
 
-    private void publishRoomEvent(
+    @Transactional
+    public void resolveReport(UUID reportId) {
+        ChatMessageReport report = reportRepository.findById(reportId)
+                .orElseThrow(() -> new EntityNotFoundException("Report not found"));
+
+        FamilyChatMessage message = report.getMessage();
+
+        message.setModerationStatus(ChatModerationStatus.CLEAN);
+        chatMessageRepository.save(message);
+
+        FamilyChatRoom room = message.getRoom();
+
+        room.setNeedsAttention(false);
+        room.setReported(false);
+        room.setLastReportReason(null);
+
+        if (room.getStatus() == ChatRoomStatus.REPORTED) {
+            room.setStatus(ChatRoomStatus.ACTIVE);
+        }
+
+        chatRoomRepository.save(room);
+
+        auditLogService.record(
+                AuditAction.CHAT_MESSAGE_MODERATED,
+                AuditEntityType.CHAT_MESSAGE,
+                message.getId(),
+                "Chat report resolved"
+        );
+    }
+
+    private AdminChatReportResponse toReportResponse(ChatMessageReport report) {
+        FamilyChatMessage message = report.getMessage();
+
+        return AdminChatReportResponse.builder()
+                .reportId(report.getId())
+                .roomId(message.getRoom().getId())
+                .messageId(message.getId())
+                .reporterUserId(report.getReporterUser().getId())
+                .reporterName(resolveReporterName(report.getReporterUser()))
+                .reporterPhone(report.getReporterUser().getPhone())
+                .reason(report.getReason())
+                .details(report.getDetails())
+                .messageContent(message.getContent())
+                .messageSenderName(resolveSenderName(message))
+                .createdAt(report.getCreatedAt())
+                .build();
+    }
+
+    private String resolveReporterName(UserAccount user) {
+        return parentProfileRepository.findByUserAccountId(user.getId())
+                .map(ParentProfile::getParentName)
+                .orElse(user.getPhone());
+    }
+
+
+
+    private FamilySubscription getCurrentSubscription(UUID userId) {
+        return familySubscriptionRepository
+                .findFirstByUserAccountIdAndCurrentSubscriptionTrue(userId)
+                .orElse(null);
+    }
+
+    private boolean isActiveSubscription(FamilySubscription subscription) {
+        return subscription != null
+                && subscription.getSubscriptionStatus() == SubscriptionStatus.ACTIVE;
+    }
+
+    private boolean isCrmAllowed(FamilySubscription subscription) {
+        if (!isActiveSubscription(subscription)) {
+            return false;
+        }
+
+        return switch (subscription.getPlanCode()) {
+            case "PREMIUM", "ELITE" -> true;
+            default -> false;
+        };
+    }
+
+    private FamilySubscription resolveBestSubscription(FamilyChatRoom room) {
+        FamilySubscription boySubscription =
+                room.getBoyUser() != null
+                        ? getCurrentSubscription(room.getBoyUser().getId())
+                        : null;
+
+        FamilySubscription girlSubscription =
+                room.getGirlUser() != null
+                        ? getCurrentSubscription(room.getGirlUser().getId())
+                        : null;
+
+        if (isCrmAllowed(boySubscription)) {
+            return boySubscription;
+        }
+
+        if (isCrmAllowed(girlSubscription)) {
+            return girlSubscription;
+        }
+
+        if (isActiveSubscription(boySubscription)) {
+            return boySubscription;
+        }
+
+        if (isActiveSubscription(girlSubscription)) {
+            return girlSubscription;
+        }
+
+        return boySubscription != null ? boySubscription : girlSubscription;
+    }
+
+    @Transactional
+    public AdminChatMediaUploadResponse uploadMedia(
             UUID roomId,
-            String event,
-            Object payload
+            UUID assistedUserId,
+            MultipartFile file
     ) {
-        messagingTemplate.convertAndSend(
-                "/topic/chat.room." + roomId,
-                ChatWebSocketEvent.builder()
-                        .event(event)
-                        .roomId(roomId)
-                        .payload(payload)
+
+        FamilyChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() ->
+                        new EntityNotFoundException("Chat room not found"));
+
+        validateEmployeeRoomAccess(room);
+
+        if (room.getStatus() == ChatRoomStatus.CLOSED) {
+            throw new IllegalArgumentException("Chat room is closed");
+        }
+
+        if (room.isBlocked()) {
+            throw new IllegalArgumentException("Chat room is blocked");
+        }
+
+        UUID fromUser =
+                room.getBoyUser() != null
+                        ? room.getBoyUser().getId()
+                        : null;
+
+        UUID toUser =
+                room.getGirlUser() != null
+                        ? room.getGirlUser().getId()
+                        : null;
+
+        if (!assistedUserId.equals(fromUser)
+                && !assistedUserId.equals(toUser)) {
+            throw new IllegalArgumentException(
+                    "Assisted user does not belong to this chat room"
+            );
+        }
+
+        return mediaService.uploadCrmChatMedia(
+                roomId,
+                assistedUserId,
+                file
+        );
+    }
+
+    private void validateEmployeeRoomAccess(
+            FamilyChatRoom room
+    ) {
+
+        EmployeeAccount employee = getCurrentEmployee();
+
+        if (employee.getRole() == EmployeeRole.SUPER_ADMIN
+                || employee.getRole() == EmployeeRole.ADMIN) {
+            return;
+        }
+
+        if (employee.getRole() == EmployeeRole.CRM_AGENT) {
+
+            if (room.getAssignedEmployee() == null
+                    || !room.getAssignedEmployee()
+                    .getId()
+                    .equals(employee.getId())) {
+
+                throw new IllegalArgumentException(
+                        "You are not assigned to this chat room"
+                );
+            }
+
+            return;
+        }
+
+        throw new IllegalArgumentException(
+                "You do not have permission"
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> downloadMessageMedia(
+            UUID roomId,
+            UUID messageId,
+            UUID mediaId
+    ) {
+        return streamMessageMedia(
+                roomId,
+                messageId,
+                mediaId,
+                true
+        );
+    }
+
+
+    private ResponseEntity<byte[]> streamMessageMedia(
+            UUID roomId,
+            UUID messageId,
+            UUID mediaId,
+            boolean download
+    ) {
+        EmployeeAccount actor = getCurrentEmployee();
+
+        FamilyChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("Chat room not found"));
+
+        assertCanAccessRoom(actor, room);
+
+        FamilyChatMessage message = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new EntityNotFoundException("Message not found"));
+
+        if (!message.getRoom().getId().equals(room.getId())) {
+            throw new AccessDeniedException("Message does not belong to this chat room");
+        }
+
+        if (message.getMediaFile() == null
+                || !message.getMediaFile().getId().equals(mediaId)) {
+            throw new EntityNotFoundException("Media not found for this message");
+        }
+
+        MediaFile media = message.getMediaFile();
+
+        if (media.isDeleted()) {
+            throw new EntityNotFoundException("Media file not found");
+        }
+
+        byte[] bytes = fileStorageService.load(media.getStorageKey());
+
+        auditLogService.record(
+                AuditAction.SYSTEM_ACTION,
+                AuditEntityType.CHAT_MESSAGE,
+                message.getId(),
+                download
+                        ? "Admin downloaded chat media"
+                        : "Admin viewed chat media"
+        );
+
+        String disposition = download ? "attachment" : "inline";
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(media.getContentType()))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        disposition + "; filename=\"" + media.getOriginalFileName() + "\""
+                )
+                .body(bytes);
+    }
+
+    private void publishCommunicationCenterEventForCrmMessage(
+            FamilyChatRoom room,
+            FamilyChatMessage message
+    ) {
+        communicationCenterEventPublisher.publish(
+                CommunicationCenterEvent.builder()
+                        .event(CommunicationCenterEventType.CHAT_CRM_MESSAGE_SENT)
+                        .itemType("CHAT_ROOM")
+                        .itemId(room.getId())
+                        .customerUserId(
+                                room.getFromUser() != null
+                                        ? room.getFromUser().getId()
+                                        : null
+                        )
+                        .assignedEmployeeId(
+                                room.getAssignedEmployee() != null
+                                        ? room.getAssignedEmployee().getId()
+                                        : null
+                        )
+                        .title(
+                                message.getMediaFile() != null
+                                        ? "CRM media message sent"
+                                        : "CRM message sent"
+                        )
+                        .message(
+                                message.getMediaFile() != null
+                                        ? "A CRM media message was sent in family chat."
+                                        : "A CRM message was sent in family chat."
+                        )
                         .emittedAt(Instant.now())
                         .build()
         );
     }
 
-    private void notifyRoomFamilies(FamilyChatRoom room) {
-        notificationService.create(
-                room.getBoyUser().getId(),
-                NotificationType.CHAT_OPENED,
-                "CRM message received",
-                "Your CRM assistant sent a message in family chat.",
-                "/chat/" + room.getId(),
-                room.getId()
-        );
-
-        notificationService.create(
-                room.getGirlUser().getId(),
-                NotificationType.CHAT_OPENED,
-                "CRM message received",
-                "Your CRM assistant sent a message in family chat.",
-                "/chat/" + room.getId(),
-                room.getId()
-        );
-    }
-
-    private String preview(String content) {
-        if (content == null) return null;
-        return content.length() <= 80 ? content : content.substring(0, 80) + "...";
-    }
-
-    private String resolveFamilyDisplayName(UUID userId) {
-        return userProfileRepository.findByUserAccountId(userId)
-                .map(UserProfile::getCandidateFirstName)
-                .filter(name -> name != null && !name.isBlank())
-                .orElse("Family");
-    }
-
-    private String resolveAdminSenderName(
-            FamilyChatMessage message,
-            UserProfile senderProfile
-    ) {
-        if (message.getSenderType() == ChatSenderType.CRM) {
-            return message.getSenderEmployee() != null
-                    ? message.getSenderEmployee().getFullName()
-                    : "CRM";
-        }
-
-        if (message.getSenderType() == ChatSenderType.SYSTEM) {
-            return "System";
-        }
-
-        return senderProfile != null && senderProfile.getCandidateFirstName() != null
-                ? senderProfile.getCandidateFirstName()
-                : "Family";
-    }
-
-    private boolean hasCrmSupportPlan(UUID userId) {
-
-        return subscriptionRepository
-                .findTopByUserAccountIdAndStatusOrderByCreatedAtDesc(
-                        userId,
-                        SubscriptionStatus.ACTIVE
-                )
-                .filter(subscription ->
-                        subscription.getExpiresAt() == null
-                                || subscription.getExpiresAt().isAfter(Instant.now())
-                )
-                .map(subscription ->
-                        switch (subscription.getPlanType()) {
-                            case BASIC_299, PREMIUM_999, ELITE_2499 -> true;
-                            case FREE_ONBOARDING -> false;
-                        }
-                )
-                .orElse(false);
-    }
-
-    private String resolveAdminExpectedSpeaker(
-            FamilyChatRoom room,
-            boolean boyHasCrmSupport,
-            boolean girlHasCrmSupport
-    ) {
-        if (room.getChatMode() == ChatMode.DIRECT_FAMILY) {
-            return "FAMILY_TO_FAMILY";
-        }
-
-        if (room.getChatMode() == ChatMode.CRM_TO_CRM) {
-            return "CRM_TO_CRM";
-        }
-
-        if (boyHasCrmSupport && !girlHasCrmSupport) {
-            return "BOY_CRM_TO_GIRL_FAMILY";
-        }
-
-        if (!boyHasCrmSupport && girlHasCrmSupport) {
-            return "GIRL_CRM_TO_BOY_FAMILY";
-        }
-
-        return "CRM_ASSISTED";
-    }
 
 }

@@ -17,4 +17,10 @@ public interface FamilySubscriptionRepository extends JpaRepository<FamilySubscr
     long countBySubscriptionStatus(SubscriptionStatus status);
 
     long countByPaymentStatus(RevenuePaymentStatus status);
+    Optional<FamilySubscription> findFirstByUserAccountIdAndCurrentSubscriptionTrue(UUID userAccountId);
+
+    long countByPlanCodeAndSubscriptionStatus(
+            String planCode,
+            com.shadiwaley.server.revenue.domain.SubscriptionStatus subscriptionStatus
+    );
 }

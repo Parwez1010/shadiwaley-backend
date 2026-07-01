@@ -1,266 +1,195 @@
 package com.shadiwaley.server.chat.api.controller;
 
 import com.shadiwaley.server.chat.application.service.AdminChatMonitorService;
+import com.shadiwaley.server.chat.domain.ChatMode;
 import com.shadiwaley.server.chat.domain.ChatRoomStatus;
-import com.shadiwaley.server.chat.dto.admin.request.*;
-import com.shadiwaley.server.chat.dto.admin.response.*;
-import com.shadiwaley.server.chat.dto.response.ChatMessageResponse;
+import com.shadiwaley.server.chat.dto.admin.request.AdminSendChatMessageRequest;
+import com.shadiwaley.server.chat.dto.request.AdminAssignChatRoomRequest;
+import com.shadiwaley.server.chat.dto.request.AdminChatInternalNoteRequest;
+import com.shadiwaley.server.chat.dto.response.*;
 import com.shadiwaley.server.common.response.ApiResponse;
 import com.shadiwaley.server.common.response.ResponseFactory;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/admin/chat-monitor")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'CRM_AGENT')")
 public class AdminChatMonitorController {
 
     private final AdminChatMonitorService adminChatMonitorService;
 
-    @GetMapping("/summary")
-    public ApiResponse<AdminChatMonitorSummaryResponse> summary(
-            @RequestParam(required = false) LocalDate fromDate,
-            @RequestParam(required = false) LocalDate toDate,
-            @RequestParam(required = false) UUID assignedEmployeeId
-    ) {
-        return ResponseFactory.success(
-                "Chat monitor summary fetched successfully",
-                adminChatMonitorService.getSummary(fromDate, toDate, assignedEmployeeId)
-        );
-    }
-
     @GetMapping("/rooms")
-    public ApiResponse<AdminChatRoomPageResponse> rooms(
+    public ApiResponse<AdminChatRoomPageResponse> getRooms(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) ChatRoomStatus status,
+            @RequestParam(required = false) ChatMode chatMode,
+            @RequestParam(required = false) Boolean reported,
+            @RequestParam(required = false) Boolean needsAttention,
+            @RequestParam(required = false) Boolean blocked,
             @RequestParam(required = false) UUID assignedEmployeeId,
-            @RequestParam(required = false) UUID crmCaseId,
-            @RequestParam(required = false) UUID proposalId,
-            @RequestParam(required = false) UUID pipelineId,
-            @RequestParam(required = false) UUID fromProfileId,
-            @RequestParam(required = false) UUID toProfileId,
-            @RequestParam(required = false) String district,
-            @RequestParam(required = false) String side,
-            @RequestParam(required = false) Boolean hasUnread,
-            @RequestParam(required = false) Boolean reportedOnly,
-            @RequestParam(required = false) Boolean needsAttentionOnly,
+            @RequestParam(required = false) String search,
             @RequestParam(required = false) LocalDate fromDate,
-            @RequestParam(required = false) LocalDate toDate,
-            @RequestParam(required = false) String sort
+            @RequestParam(required = false) LocalDate toDate
     ) {
         return ResponseFactory.success(
-                "Chat rooms fetched successfully",
+                "Chat monitor rooms fetched successfully",
                 adminChatMonitorService.getRooms(
                         page,
                         size,
-                        search,
                         status,
+                        chatMode,
+                        reported,
+                        needsAttention,
+                        blocked,
                         assignedEmployeeId,
-                        crmCaseId,
-                        proposalId,
-                        pipelineId,
-                        fromProfileId,
-                        toProfileId,
-                        district,
-                        side,
-                        hasUnread,
-                        reportedOnly,
-                        needsAttentionOnly,
+                        search,
                         fromDate,
-                        toDate,
-                        sort
+                        toDate
                 )
         );
     }
 
     @GetMapping("/rooms/{roomId}")
-    public ApiResponse<AdminChatRoomDetailResponse> roomDetail(
+    public ApiResponse<AdminChatRoomDetailResponse> getRoomDetail(
             @PathVariable UUID roomId
     ) {
         return ResponseFactory.success(
-                "Chat room detail fetched successfully",
+                "Chat monitor room detail fetched successfully",
                 adminChatMonitorService.getRoomDetail(roomId)
         );
     }
 
     @GetMapping("/rooms/{roomId}/messages")
-    public ApiResponse<AdminChatMessagePageResponse> messages(
+    public ApiResponse<AdminChatMessagePageResponse> getMessages(
             @PathVariable UUID roomId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "30") int size,
-            @RequestParam(required = false) UUID beforeMessageId,
-            @RequestParam(required = false) UUID afterMessageId,
-            @RequestParam(required = false) String sort
+            @RequestParam(required = false) Instant before,
+            @RequestParam(defaultValue = "50") int limit
     ) {
         return ResponseFactory.success(
-                "Chat messages fetched successfully",
-                adminChatMonitorService.getMessages(
-                        roomId,
-                        page,
-                        size,
-                        beforeMessageId,
-                        afterMessageId,
-                        sort
-                )
+                "Chat monitor messages fetched successfully",
+                adminChatMonitorService.getMessages(roomId, before, limit)
         );
     }
 
     @PostMapping("/rooms/{roomId}/notes")
-    public ApiResponse<AdminChatNoteResponse> addNote(
+    public ApiResponse<AdminChatInternalNoteResponse> addInternalNote(
             @PathVariable UUID roomId,
-            @Valid @RequestBody AdminChatNoteRequest request
+            @Valid @RequestBody AdminChatInternalNoteRequest request
     ) {
         return ResponseFactory.success(
-                "Chat note added successfully",
-                adminChatMonitorService.addNote(roomId, request)
-        );
-    }
-
-    @PatchMapping("/rooms/{roomId}/status")
-    public ApiResponse<AdminChatStatusUpdateResponse> updateStatus(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody AdminChatStatusUpdateRequest request
-    ) {
-        return ResponseFactory.success(
-                "Chat room status updated successfully",
-                adminChatMonitorService.updateStatus(roomId, request)
-        );
-    }
-
-    @PatchMapping("/messages/{messageId}/moderation")
-    public ApiResponse<AdminMessageModerationResponse> moderateMessage(
-            @PathVariable UUID messageId,
-            @Valid @RequestBody AdminMessageModerationRequest request
-    ) {
-        return ResponseFactory.success(
-                "Message moderation updated successfully",
-                adminChatMonitorService.moderateMessage(messageId, request)
-        );
-    }
-
-    @PostMapping("/rooms/{roomId}/report")
-    public ApiResponse<AdminChatStatusUpdateResponse> reportRoom(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody AdminChatActionReasonRequest request
-    ) {
-        return ResponseFactory.success(
-                "Chat room reported successfully",
-                adminChatMonitorService.reportRoom(roomId, request)
-        );
-    }
-
-    @PostMapping("/rooms/{roomId}/block")
-    public ApiResponse<AdminChatStatusUpdateResponse> blockRoom(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody AdminChatActionReasonRequest request
-    ) {
-        return ResponseFactory.success(
-                "Chat room blocked successfully",
-                adminChatMonitorService.blockRoom(roomId, request)
-        );
-    }
-
-    @PostMapping("/rooms/{roomId}/unblock")
-    public ApiResponse<AdminChatStatusUpdateResponse> unblockRoom(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody AdminChatActionReasonRequest request
-    ) {
-        return ResponseFactory.success(
-                "Chat room unblocked successfully",
-                adminChatMonitorService.unblockRoom(roomId, request)
-        );
-    }
-
-    @PostMapping("/rooms/{roomId}/close")
-    public ApiResponse<AdminChatStatusUpdateResponse> closeRoom(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody AdminChatCloseRequest request
-    ) {
-        return ResponseFactory.success(
-                "Chat room closed successfully",
-                adminChatMonitorService.closeRoom(roomId, request)
-        );
-    }
-
-    @PatchMapping("/rooms/{roomId}/assignment")
-    public ApiResponse<AdminChatAssignmentResponse> updateAssignment(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody AdminChatAssignmentRequest request
-    ) {
-        return ResponseFactory.success(
-                "Chat room assignment updated successfully",
-                adminChatMonitorService.updateAssignment(roomId, request)
-        );
-    }
-
-    @PostMapping("/rooms/{roomId}/decision")
-    public ApiResponse<AdminChatDecisionResponse> recordDecision(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody AdminChatDecisionRequest request
-    ) {
-        return ResponseFactory.success(
-                "Family decision recorded successfully",
-                adminChatMonitorService.recordDecision(roomId, request)
-        );
-    }
-
-    @PostMapping("/rooms/{roomId}/follow-up")
-    public ApiResponse<AdminChatFollowUpResponse> scheduleFollowUp(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody AdminChatFollowUpRequest request
-    ) {
-        return ResponseFactory.success(
-                "Chat follow-up scheduled successfully",
-                adminChatMonitorService.scheduleFollowUp(roomId, request)
+                "Internal note added successfully",
+                adminChatMonitorService.addInternalNote(roomId, request)
         );
     }
 
     @GetMapping("/rooms/{roomId}/notes")
-    public ApiResponse<AdminChatHistoryPageResponse<AdminChatNoteResponse>> getNotes(
-            @PathVariable UUID roomId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+    public ApiResponse<List<AdminChatInternalNoteResponse>> getInternalNotes(
+            @PathVariable UUID roomId
     ) {
         return ResponseFactory.success(
-                "Chat notes fetched successfully",
-                adminChatMonitorService.getNotes(roomId, page, size)
+                "Internal notes fetched successfully",
+                adminChatMonitorService.getInternalNotes(roomId)
         );
     }
 
-    @GetMapping("/rooms/{roomId}/decisions")
-    public ApiResponse<AdminChatHistoryPageResponse<AdminChatDecisionLogResponse>> getDecisions(
-            @PathVariable UUID roomId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
-    ) {
+    @GetMapping("/dashboard")
+    public ApiResponse<AdminChatDashboardResponse> dashboard(){
+
         return ResponseFactory.success(
-                "Chat decisions fetched successfully",
-                adminChatMonitorService.getDecisions(roomId, page, size)
+                "Dashboard fetched successfully",
+                adminChatMonitorService.getDashboard()
         );
     }
 
-    @GetMapping("/rooms/{roomId}/follow-ups")
-    public ApiResponse<AdminChatHistoryPageResponse<AdminChatFollowUpResponse>> getFollowUps(
+    @PatchMapping("/rooms/{roomId}/assign")
+    public ApiResponse<Void> assign(
             @PathVariable UUID roomId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
-    ) {
+            @Valid @RequestBody AdminAssignChatRoomRequest request){
+
+        adminChatMonitorService.assignRoom(
+                roomId,
+                request.getEmployeeId()
+        );
+
         return ResponseFactory.success(
-                "Chat follow-ups fetched successfully",
-                adminChatMonitorService.getFollowUps(roomId, page, size)
+                "Room assigned successfully",
+                null
         );
     }
 
-    @PostMapping("/rooms/{roomId}/messages")
-    public ApiResponse<ChatMessageResponse> sendCrmMessage(
+    @PatchMapping("/rooms/{roomId}/block")
+    public ApiResponse<Void> block(
+            @PathVariable UUID roomId){
+
+        adminChatMonitorService.blockRoom(roomId);
+
+        return ResponseFactory.success(
+                "Room blocked",
+                null
+        );
+    }
+
+    @PatchMapping("/rooms/{roomId}/unblock")
+    public ApiResponse<Void> unblock(
+            @PathVariable UUID roomId){
+
+        adminChatMonitorService.unblockRoom(roomId);
+
+        return ResponseFactory.success(
+                "Room unblocked",
+                null
+        );
+    }
+
+    @PatchMapping("/rooms/{roomId}/close")
+    public ApiResponse<Void> close(
+            @PathVariable UUID roomId){
+
+        adminChatMonitorService.closeRoomAdmin(roomId);
+
+        return ResponseFactory.success(
+                "Room closed",
+                null
+        );
+    }
+
+    @PatchMapping("/messages/{messageId}/hide")
+    public ApiResponse<Void> hide(
+            @PathVariable UUID messageId){
+
+        adminChatMonitorService.hideMessage(messageId);
+
+        return ResponseFactory.success(
+                "Message hidden",
+                null
+        );
+    }
+
+    @PatchMapping("/messages/{messageId}/restore")
+    public ApiResponse<Void> restore(
+            @PathVariable UUID messageId){
+
+        adminChatMonitorService.restoreMessage(messageId);
+
+        return ResponseFactory.success(
+                "Message restored",
+                null
+        );
+    }
+
+    @PostMapping("/rooms/{roomId}/crm-message")
+    public ApiResponse<AdminChatMessageResponse> sendCrmMessage(
             @PathVariable UUID roomId,
             @Valid @RequestBody AdminSendChatMessageRequest request
     ) {
@@ -269,6 +198,68 @@ public class AdminChatMonitorController {
                 adminChatMonitorService.sendCrmMessage(roomId, request)
         );
     }
+
+    @GetMapping("/rooms/{roomId}/messages/{messageId}/media/{mediaId}/view")
+    public ResponseEntity<byte[]> viewMessageMedia(
+            @PathVariable UUID roomId,
+            @PathVariable UUID messageId,
+            @PathVariable UUID mediaId
+    ) {
+        return adminChatMonitorService.viewMessageMedia(roomId, messageId, mediaId);
+    }
+
+    @GetMapping("/reports")
+    public ApiResponse<AdminChatReportPageResponse> getReports(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseFactory.success(
+                "Chat reports fetched successfully",
+                adminChatMonitorService.getReports(page, size)
+        );
+    }
+
+    @PatchMapping("/reports/{reportId}/resolve")
+    public ApiResponse<Void> resolveReport(
+            @PathVariable UUID reportId
+    ) {
+        adminChatMonitorService.resolveReport(reportId);
+
+        return ResponseFactory.success(
+                "Chat report resolved successfully",
+                null
+        );
+    }
+
+    @PostMapping(
+            value = "/rooms/{roomId}/media",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ApiResponse<AdminChatMediaUploadResponse> uploadMedia(
+            @PathVariable UUID roomId,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam UUID assistedUserId
+    ) {
+
+        return ResponseFactory.success(
+                "CRM chat media uploaded successfully",
+                adminChatMonitorService.uploadMedia(
+                        roomId,
+                        assistedUserId,
+                        file
+                )
+        );
+    }
+
+    @GetMapping("/rooms/{roomId}/messages/{messageId}/media/{mediaId}/download")
+    public ResponseEntity<byte[]> downloadMessageMedia(
+            @PathVariable UUID roomId,
+            @PathVariable UUID messageId,
+            @PathVariable UUID mediaId
+    ) {
+        return adminChatMonitorService.downloadMessageMedia(roomId, messageId, mediaId);
+    }
+
 
 
 }

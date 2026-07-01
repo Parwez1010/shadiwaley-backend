@@ -4,6 +4,7 @@ import com.shadiwaley.server.chat.application.service.AdminChatMonitorService;
 import com.shadiwaley.server.chat.application.service.FamilyChatService;
 import com.shadiwaley.server.chat.dto.admin.request.AdminSendChatMessageRequest;
 import com.shadiwaley.server.chat.dto.request.SendChatMessageRequest;
+import com.shadiwaley.server.chat.dto.response.AdminChatMessageResponse;
 import com.shadiwaley.server.chat.dto.response.ChatMessageResponse;
 import com.shadiwaley.server.security.ActorType;
 import lombok.RequiredArgsConstructor;
@@ -55,7 +56,7 @@ public class FamilyChatWebSocketController {
     }
 
     @MessageMapping("/admin.chat.send/{roomId}")
-    public ChatMessageResponse sendAdminMessage(
+    public AdminChatMessageResponse sendAdminMessage(
             @DestinationVariable UUID roomId,
             AdminSendChatMessageRequest request,
             Authentication authentication

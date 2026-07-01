@@ -55,4 +55,11 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, UU
             SupportTicketStatus status
     );
 
+    long countByAssignedEmployeeIsNull();
+
+
+    Page<SupportTicket> findByAssignedEmployeeIsNullOrderByUpdatedAtDesc(
+            Pageable pageable
+    );
+
 }

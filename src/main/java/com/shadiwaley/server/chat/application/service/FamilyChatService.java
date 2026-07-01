@@ -78,6 +78,11 @@ public class FamilyChatService {
                     FamilyChatRoom room = new FamilyChatRoom();
                     room.setRishtaRequest(rishtaRequest);
 
+                    room.setFromUser(rishtaRequest.getSenderUser());
+                    room.setToUser(rishtaRequest.getReceiverUser());
+                    room.setFromProfile(rishtaRequest.getSenderProfile());
+                    room.setToProfile(rishtaRequest.getReceiverProfile());
+
                     if (rishtaRequest.getSenderUser().getSide() == UserSide.BOY) {
                         room.setBoyUser(rishtaRequest.getSenderUser());
                         room.setGirlUser(rishtaRequest.getReceiverUser());
@@ -840,9 +845,7 @@ public class FamilyChatService {
         int updated = 0;
 
         for (FamilyChatRoom room : rooms) {
-            if (room.getProposal() != null) {
-                continue;
-            }
+            boolean changed = false;
 
             RishtaRequest rishtaRequest = room.getRishtaRequest();
 
@@ -850,9 +853,43 @@ public class FamilyChatService {
                 continue;
             }
 
+            if (room.getFromUser() == null && rishtaRequest.getSenderUser() != null) {
+                room.setFromUser(rishtaRequest.getSenderUser());
+                changed = true;
+            }
+
+            if (room.getToUser() == null && rishtaRequest.getReceiverUser() != null) {
+                room.setToUser(rishtaRequest.getReceiverUser());
+                changed = true;
+            }
+
+            if (room.getFromProfile() == null && rishtaRequest.getSenderProfile() != null) {
+                room.setFromProfile(rishtaRequest.getSenderProfile());
+                changed = true;
+            }
+
+            if (room.getToProfile() == null && rishtaRequest.getReceiverProfile() != null) {
+                room.setToProfile(rishtaRequest.getReceiverProfile());
+                changed = true;
+            }
+
+            UUID beforeProposalId = room.getProposal() != null ? room.getProposal().getId() : null;
+            UUID beforeCrmCaseId = room.getCrmCase() != null ? room.getCrmCase().getId() : null;
+            UUID beforeAssignedEmployeeId = room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null;
+
             linkProposalAndCrm(room, rishtaRequest);
 
-            if (room.getProposal() != null) {
+            UUID afterProposalId = room.getProposal() != null ? room.getProposal().getId() : null;
+            UUID afterCrmCaseId = room.getCrmCase() != null ? room.getCrmCase().getId() : null;
+            UUID afterAssignedEmployeeId = room.getAssignedEmployee() != null ? room.getAssignedEmployee().getId() : null;
+
+            if (!Objects.equals(beforeProposalId, afterProposalId)
+                    || !Objects.equals(beforeCrmCaseId, afterCrmCaseId)
+                    || !Objects.equals(beforeAssignedEmployeeId, afterAssignedEmployeeId)) {
+                changed = true;
+            }
+
+            if (changed) {
                 chatRoomRepository.save(room);
                 updated++;
             }
