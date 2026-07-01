@@ -31,6 +31,7 @@ public class SecurityConfig {
                         .accessDeniedHandler(restAccessDeniedHandler)
                 )
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/initiate").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/verify").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/resend/**").permitAll()

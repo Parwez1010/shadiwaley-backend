@@ -37,7 +37,9 @@ public class CorsConfig {
         config.setAllowedHeaders(List.of(
                 "Authorization",
                 "Content-Type",
-                "Accept"
+                "Accept",
+                "Origin",
+                "X-Requested-With"
         ));
 
         config.setExposedHeaders(List.of(
