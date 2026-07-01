@@ -1,0 +1,16 @@
+package com.shadiwaley.server.communication.domain;
+
+public enum CommunicationActivityType {
+    CHAT_MESSAGE,
+    CHAT_REPORTED,
+    CHAT_BLOCKED,
+    CHAT_CLOSED,
+    CHAT_ASSIGNED,
+    SUPPORT_TICKET_CREATED,
+    SUPPORT_TICKET_REPLIED,
+    SUPPORT_TICKET_ASSIGNED,
+    SUPPORT_TICKET_STATUS_CHANGED,
+    CRM_NOTE_ADDED,
+    CRM_FOLLOW_UP_CREATED,
+    SYSTEM
+}

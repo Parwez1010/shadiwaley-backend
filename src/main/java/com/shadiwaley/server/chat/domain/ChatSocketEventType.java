@@ -21,4 +21,10 @@ public final class ChatSocketEventType {
     public static final String ADMIN_ROOM_NEEDS_ATTENTION = "ADMIN_ROOM_NEEDS_ATTENTION";
     public static final String ADMIN_ROOM_STATUS_CHANGED = "ADMIN_ROOM_STATUS_CHANGED";
     public static final String ADMIN_ROOM_ASSIGNED = "ADMIN_ROOM_ASSIGNED";
+
+    public static final String ADMIN_ROOM_BLOCKED = "ADMIN_ROOM_BLOCKED";
+    public static final String ADMIN_ROOM_UNBLOCKED = "ADMIN_ROOM_UNBLOCKED";
+    public static final String ADMIN_ROOM_CLOSED = "ADMIN_ROOM_CLOSED";
+    public static final String ADMIN_MESSAGE_HIDDEN = "ADMIN_MESSAGE_HIDDEN";
+    public static final String ADMIN_MESSAGE_RESTORED = "ADMIN_MESSAGE_RESTORED";
 }

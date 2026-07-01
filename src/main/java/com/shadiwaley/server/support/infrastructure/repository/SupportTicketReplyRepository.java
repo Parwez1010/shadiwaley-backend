@@ -15,4 +15,9 @@ public interface SupportTicketReplyRepository extends JpaRepository<SupportTicke
     List<SupportTicketReply> findByTicketIdOrderByCreatedAtAsc(
             UUID ticketId
     );
+
+    long countByCreatedAtBetween(
+            java.time.Instant start,
+            java.time.Instant end
+    );
 }

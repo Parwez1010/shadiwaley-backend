@@ -20,6 +20,8 @@ public interface FamilyChatMessageRepository extends JpaRepository<FamilyChatMes
             Pageable pageable
     );
 
+    long count();
+
     long countByRoomIdAndSenderUserIdNotAndReadAtIsNullAndDeletedAtIsNull(UUID roomId, UUID senderUserId);
 
     List<FamilyChatMessage> findByRoomIdAndSenderUserIdNotAndReadAtIsNullAndDeletedAtIsNull(UUID roomId, UUID senderUserId);
@@ -29,6 +31,7 @@ public interface FamilyChatMessageRepository extends JpaRepository<FamilyChatMes
     long countByRoomId(UUID roomId);
 
     long countByRoomIdAndMediaFileIsNotNull(UUID roomId);
+
 
     long countByRoomIdAndReadAtIsNull(UUID roomId);
 
@@ -57,7 +60,6 @@ public interface FamilyChatMessageRepository extends JpaRepository<FamilyChatMes
             Instant sentAt,
             Pageable pageable
     );
-
 
 
 }

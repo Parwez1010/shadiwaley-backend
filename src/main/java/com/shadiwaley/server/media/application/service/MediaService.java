@@ -1,5 +1,6 @@
 package com.shadiwaley.server.media.application.service;
 
+import com.shadiwaley.server.chat.dto.response.AdminChatMediaUploadResponse;
 import com.shadiwaley.server.engagement.application.service.MilestoneService;
 import com.shadiwaley.server.media.application.storage.FileStorageService;
 import com.shadiwaley.server.media.application.storage.StoredFile;
@@ -269,15 +270,23 @@ public class MediaService {
         throw new IllegalArgumentException("Unsupported media type");
     }
 
+
     private void validateImageFile(MultipartFile file, String contentType) {
-        if (!contentType.equals("image/jpeg") && !contentType.equals("image/png")) {
-            throw new IllegalArgumentException("Only JPG and PNG images are allowed for candidate photos");
+        boolean allowed =
+                contentType.equals("image/jpeg")
+                        || contentType.equals("image/jpg")
+                        || contentType.equals("image/png")
+                        || contentType.equals("image/webp");
+
+        if (!allowed) {
+            throw new IllegalArgumentException("Only JPG, PNG, and WEBP images are allowed");
         }
 
         if (file.getSize() > MAX_IMAGE_SIZE_BYTES) {
             throw new IllegalArgumentException("Image size must be less than 5MB");
         }
     }
+
 
     private void validateDocumentFile(MultipartFile file, String contentType) {
         boolean allowed = contentType.equals("image/jpeg")
@@ -726,6 +735,93 @@ public class MediaService {
                 .rejected(rejected)
                 .build();
     }
+
+
+    @Transactional
+    public AdminChatMediaUploadResponse uploadCrmChatMedia(
+            UUID roomId,
+            UUID mediaOwnerUserId,
+            MultipartFile file
+    ) {
+        UserAccount userAccount = userAccountRepository.findById(mediaOwnerUserId)
+                .orElseThrow(() -> new EntityNotFoundException("Media owner user not found"));
+
+        UserProfile userProfile = userProfileRepository.findByUserAccountId(mediaOwnerUserId)
+                .orElseThrow(() -> new EntityNotFoundException("Media owner profile not found"));
+
+        MediaType mediaType = resolveChatMediaType(file);
+
+        validateFile(file, mediaType);
+
+        String folder =
+                "families/" +
+                        mediaOwnerUserId +
+                        "/chat/rooms/" +
+                        roomId +
+                        "/" +
+                        (mediaType == MediaType.CHAT_IMAGE ? "images" : "documents");
+
+        StoredFile storedFile = fileStorageService.store(file, folder);
+
+        MediaFile mediaFile = new MediaFile();
+        mediaFile.setUserAccount(userAccount);
+        mediaFile.setUserProfile(userProfile);
+        mediaFile.setMediaType(mediaType);
+        mediaFile.setOriginalFileName(storedFile.originalFileName());
+        mediaFile.setStoredFileName(storedFile.storedFileName());
+        mediaFile.setStorageKey(storedFile.storageKey());
+        mediaFile.setContentType(storedFile.contentType());
+        mediaFile.setFileSizeBytes(storedFile.fileSizeBytes());
+        mediaFile.setPrimary(false);
+        mediaFile.setVisibility(MediaVisibility.PRIVATE);
+        mediaFile.setWhatsappConsent(null);
+        mediaFile.setReviewStatus(MediaReviewStatus.APPROVED);
+        mediaFile.setDeleted(false);
+
+        MediaFile saved = mediaFileRepository.save(mediaFile);
+
+        return AdminChatMediaUploadResponse.builder()
+                .mediaFileId(saved.getId())
+                .fileName(saved.getOriginalFileName())
+                .fileSizeBytes(saved.getFileSizeBytes())
+                .contentType(saved.getContentType())
+                .mediaType(saved.getMediaType())
+                .mediaPreviewUrl(
+                        "/api/v1/admin/chat-monitor/rooms/"
+                                + roomId
+                                + "/media/"
+                                + saved.getId()
+                                + "/view"
+                )
+                .build();
+    }
+
+    private MediaType resolveChatMediaType(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("File is required");
+        }
+
+        String contentType = file.getContentType();
+
+        if (contentType == null || contentType.isBlank()) {
+            throw new IllegalArgumentException("Unable to detect file type");
+        }
+
+        return switch (contentType) {
+            case "image/jpeg",
+                 "image/jpg",
+                 "image/png",
+                 "image/webp" -> MediaType.CHAT_IMAGE;
+
+            case "application/pdf" -> MediaType.CHAT_DOCUMENT;
+
+            default -> throw new IllegalArgumentException(
+                    "Only JPG, PNG, WEBP images and PDF documents are allowed"
+            );
+        };
+    }
+
+
 
 
 

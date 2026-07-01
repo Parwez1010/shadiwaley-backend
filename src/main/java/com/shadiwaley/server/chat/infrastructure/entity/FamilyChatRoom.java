@@ -3,6 +3,7 @@ package com.shadiwaley.server.chat.infrastructure.entity;
 import com.shadiwaley.server.chat.domain.ChatRoomStatus;
 import com.shadiwaley.server.crm.infrastructure.entity.CrmCase;
 import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
+import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.proposal.infrastructure.entity.Proposal;
 import com.shadiwaley.server.rishta.infrastructure.entity.RishtaRequest;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
@@ -33,6 +34,22 @@ public class FamilyChatRoom {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "girl_user_id", nullable = false)
     private UserAccount girlUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "from_user_id")
+    private UserAccount fromUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "to_user_id")
+    private UserAccount toUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "from_profile_id")
+    private UserProfile fromProfile;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "to_profile_id")
+    private UserProfile toProfile;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "proposal_id")
