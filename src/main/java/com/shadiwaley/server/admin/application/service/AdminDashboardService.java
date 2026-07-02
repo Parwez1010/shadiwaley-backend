@@ -26,7 +26,6 @@ import com.shadiwaley.server.revenue.dto.response.SubscriptionResponse;
 import com.shadiwaley.server.rishta.domain.RishtaRequestStatus;
 import com.shadiwaley.server.rishta.infrastructure.repository.RishtaRequestRepository;
 import com.shadiwaley.server.security.AuthUser;
-import com.shadiwaley.server.subscription.application.service.SubscriptionService;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -63,7 +62,6 @@ public class AdminDashboardService {
     private final EmployeeAccountRepository employeeAccountRepository;
     private final CrmCaseRepository crmCaseRepository;
     private final CrmFollowUpRepository crmFollowUpRepository;
-    private final SubscriptionService subscriptionService;
     private final UserPreferencesRepository userPreferencesRepository;
     private final RevenueService revenueService;
 
@@ -287,15 +285,15 @@ public class AdminDashboardService {
                 .assignedEmployeeName(assignedEmployee != null ? assignedEmployee.getFullName() : "Unassigned")
 
                 .subscriptionId(subscription != null ? subscription.getSubscriptionId() : null)
-                .planCode(subscription != null ? subscription.getPlanCode() : "FREE_ONBOARDING")
-                .planName(subscription != null ? subscription.getPlanName() : "Free Onboarding")
+                .planCode(subscription != null ? subscription.getPlanCode() : null)
+                .planName(subscription != null ? subscription.getPlanName() : "No Active Plan")
                 .planAmount(subscription != null ? subscription.getAmount() : BigDecimal.ZERO)
                 .paymentStatus(subscription != null && subscription.getPaymentStatus() != null
                         ? subscription.getPaymentStatus().name()
-                        : "NOT_REQUIRED")
+                        : "NONE")
                 .subscriptionStatus(subscription != null && subscription.getSubscriptionStatus() != null
                         ? subscription.getSubscriptionStatus().name()
-                        : "FREE")
+                        : "NONE")
 
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
@@ -342,20 +340,20 @@ public class AdminDashboardService {
                 ? crmCase.getAssignedEmployee()
                 : null;
 
-        String planType = null;
-        String planDisplayName = null;
-
-        try {
-            var currentPlan = subscriptionService.getCurrentPlanDefinition(account.getId());
-            planType = currentPlan.planType().name();
-            planDisplayName = currentPlan.displayName();
-        } catch (Exception ignored) {
-            planType = "FREE_ONBOARDING";
-            planDisplayName = "Free Onboarding";
-        }
-
         SubscriptionResponse subscription =
                 getCurrentSubscriptionOrNull(account.getId());
+
+        String planType;
+        String planDisplayName;
+
+        if (subscription == null) {
+            planType = "NONE";
+            planDisplayName = "No Active Plan";
+        } else {
+            planType = subscription.getPlanCode();
+            planDisplayName = subscription.getPlanName();
+        }
+
 
         return CrmFamilyListResponse.builder()
                 .userId(account.getId())
@@ -415,15 +413,15 @@ public class AdminDashboardService {
                 .assignedEmployeeName(assignedEmployee != null ? assignedEmployee.getFullName() : "Unassigned")
 
                 .subscriptionId(subscription != null ? subscription.getSubscriptionId() : null)
-                .planCode(subscription != null ? subscription.getPlanCode() : "FREE_ONBOARDING")
-                .planName(subscription != null ? subscription.getPlanName() : "Free Onboarding")
+                .planCode(subscription != null ? subscription.getPlanCode() : null)
+                .planName(subscription != null ? subscription.getPlanName() : "No Active Plan")
                 .planAmount(subscription != null ? subscription.getAmount() : BigDecimal.ZERO)
                 .paymentStatus(subscription != null && subscription.getPaymentStatus() != null
                         ? subscription.getPaymentStatus().name()
-                        : "NOT_REQUIRED")
+                        : "NONE")
                 .subscriptionStatus(subscription != null && subscription.getSubscriptionStatus() != null
                         ? subscription.getSubscriptionStatus().name()
-                        : "FREE")
+                        : "NONE")
 
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())

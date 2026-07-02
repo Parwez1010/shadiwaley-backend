@@ -11,5 +11,9 @@ public interface RevenuePlanRepository extends JpaRepository<RevenuePlan, UUID> 
 
     Optional<RevenuePlan> findByCodeAndActiveTrue(String code);
 
+    Optional<RevenuePlan> findByCode(String code);
+
     List<RevenuePlan> findByActiveTrueOrderBySortOrderAsc();
+
+    List<RevenuePlan> findAllByOrderBySortOrderAsc();
 }

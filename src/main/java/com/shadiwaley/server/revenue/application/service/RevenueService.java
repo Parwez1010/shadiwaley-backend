@@ -68,7 +68,7 @@ public class RevenueService {
 
         revenuePermissionService.assertCanManageFamily(user.getId());
 
-        RevenuePlan plan = revenuePlanRepository.findByCodeAndActiveTrue(request.getPlanCode())
+        RevenuePlan plan = revenuePlanRepository.findByCode(request.getPlanCode())
                 .orElseThrow(() -> new EntityNotFoundException("Active plan not found"));
 
         familySubscriptionRepository
@@ -531,29 +531,47 @@ public class RevenueService {
         return value == null || value.trim().isBlank();
     }
 
+
     private FamilySubscriptionSummaryResponse buildFamilySubscriptionSummary(UUID userId) {
-        SubscriptionResponse currentSubscription =familySubscriptionRepository
-                .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(userId)
-                .map(this::toSubscriptionResponse)
-                .orElse(null);
 
-        BigDecimal paidAmount = paymentTransactionRepository
-                .sumAmountByUserAndStatus(userId, RevenuePaymentStatus.PAID);
+        SubscriptionResponse currentSubscription =
+                familySubscriptionRepository
+                        .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(userId)
+                        .map(this::toSubscriptionResponse)
+                        .orElse(null);
 
-        BigDecimal pendingAmount = paymentTransactionRepository
-                .sumAmountByUserAndStatus(userId, RevenuePaymentStatus.PENDING);
+        BigDecimal paidAmount =
+                paymentTransactionRepository.sumAmountByUserAndStatus(
+                        userId,
+                        RevenuePaymentStatus.PAID
+                );
 
-        PaymentTransaction lastPayment = paymentTransactionRepository
-                .findTopByUserAccountIdOrderByCreatedAtDesc(userId)
-                .orElse(null);
+        BigDecimal pendingAmount =
+                paymentTransactionRepository.sumAmountByUserAndStatus(
+                        userId,
+                        RevenuePaymentStatus.PENDING
+                );
 
-        PaymentSummaryResponse paymentSummary = PaymentSummaryResponse.builder()
-                .totalPaid(paidAmount)
-                .totalPending(pendingAmount)
-                .lastPaymentAt(lastPayment != null ? lastPayment.getPaidAt() : null)
-                .lastPaymentMode(lastPayment != null ? lastPayment.getPaymentMode() : null)
-                .lastPaymentAt(lastPayment != null ? lastPayment.getPaidAt() : null)
-                .build();
+        if (paidAmount == null) {
+            paidAmount = BigDecimal.ZERO;
+        }
+
+        if (pendingAmount == null) {
+            pendingAmount = BigDecimal.ZERO;
+        }
+
+        PaymentTransaction lastPayment =
+                paymentTransactionRepository
+                        .findTopByUserAccountIdOrderByCreatedAtDesc(userId)
+                        .orElse(null);
+
+        PaymentSummaryResponse paymentSummary =
+                PaymentSummaryResponse.builder()
+                        .totalPaid(paidAmount)
+                        .totalPending(pendingAmount)
+                        .lastPaymentAt(lastPayment != null ? lastPayment.getPaidAt() : null)
+                        .lastPaymentMode(lastPayment != null ? lastPayment.getPaymentMode() : null)
+                        .build();
 
         return FamilySubscriptionSummaryResponse.builder()
                 .currentSubscription(currentSubscription)
