@@ -13,7 +13,7 @@ public class ProfileDetailResponse {
     private String displayId;
     private UserSide side;
 
-    private String candidateFirstName;
+    private String firstName;
     private Short candidateAge;
     private Short candidateHeightCm;
 

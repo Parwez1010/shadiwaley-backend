@@ -16,6 +16,7 @@ public class PublicBrowseProfileResponse {
 
     private Short candidateAge;
 
+    private String firstName;
     private String district;
     private String state;
     private String maslak;

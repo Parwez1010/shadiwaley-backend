@@ -1,5 +1,6 @@
 package com.shadiwaley.server.profile.dto.response;
 
+import com.shadiwaley.server.profile.domain.MaritalStatus;
 import com.shadiwaley.server.user.domain.UserSide;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,7 +14,8 @@ public class ProfileCardResponse {
     private String displayId;
     private UserSide side;
 
-    private String candidateFirstName;
+    private String firstName;
+    private String candidateFirstName; // optional, keep until clients migrate
     private Short candidateAge;
     private Short candidateHeightCm;
 
@@ -31,7 +33,7 @@ public class ProfileCardResponse {
     private boolean hasApprovedPhoto;
     private MatchBreakdownResponse match;
     private String religion;
-    private com.shadiwaley.server.profile.domain.MaritalStatus maritalStatus;
+    private MaritalStatus maritalStatus;
 
     private String houseType;
 

@@ -232,7 +232,7 @@ public class AuthService {
     }
 
     private void validateOtpRequestLimit(String phone) {
-        Instant oneHourAgo = Instant.now().minusSeconds(3600);
+        Instant oneHourAgo = Instant.now().minusSeconds(120);
         long requestCount = otpSessionRepository.countByPhoneAndCreatedAtAfter(phone, oneHourAgo);
 
         if (requestCount >= 3) {

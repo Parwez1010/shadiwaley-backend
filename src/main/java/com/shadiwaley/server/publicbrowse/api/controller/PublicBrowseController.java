@@ -3,11 +3,14 @@ package com.shadiwaley.server.publicbrowse.api.controller;
 import com.shadiwaley.server.common.response.ApiResponse;
 import com.shadiwaley.server.common.response.ResponseFactory;
 import com.shadiwaley.server.profile.domain.MaritalStatus;
+import com.shadiwaley.server.profile.dto.response.ProfileDetailResponse;
 import com.shadiwaley.server.publicbrowse.application.service.PublicBrowseService;
 import com.shadiwaley.server.publicbrowse.dto.response.PublicBrowseProfilePageResponse;
 import com.shadiwaley.server.customer.browse.dto.response.CustomerBrowseFiltersResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/public/browse")
@@ -53,6 +56,17 @@ public class PublicBrowseController {
                         minMehr,
                         maxMehr
                 )
+        );
+    }
+
+
+    @GetMapping("/profiles/{profileId}")
+    public ApiResponse<ProfileDetailResponse> getProfileDetail(
+            @PathVariable UUID profileId
+    ) {
+        return ResponseFactory.success(
+                "Public profile fetched successfully",
+                publicBrowseService.getProfileDetail(profileId)
         );
     }
 

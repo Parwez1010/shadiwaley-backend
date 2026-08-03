@@ -8,11 +8,13 @@ import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
 import com.shadiwaley.server.profile.domain.MaritalStatus;
 import com.shadiwaley.server.profile.domain.ProfileStatus;
+import com.shadiwaley.server.profile.dto.response.ProfileDetailResponse;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.profile.infrastructure.repository.UserProfileRepository;
 import com.shadiwaley.server.publicbrowse.dto.response.PublicBrowseProfilePageResponse;
 import com.shadiwaley.server.publicbrowse.dto.response.PublicBrowseProfileResponse;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Root;
@@ -210,7 +212,7 @@ public class PublicBrowseService {
                 .profileId(profile.getId())
                 .displayId(profile.getDisplayId())
                 .side(profile.getUserAccount().getSide())
-
+                .firstName(profile.getCandidateFirstName())
                 .candidateAge(profile.getCandidateAge())
 
                 .district(parent != null ? parent.getDistrict() : null)
@@ -278,4 +280,58 @@ public class PublicBrowseService {
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
     }
+
+
+    @Transactional(readOnly = true)
+    public ProfileDetailResponse getProfileDetail(UUID profileId) {
+
+        UserProfile candidate = userProfileRepository.findById(profileId)
+                .orElseThrow(() -> new EntityNotFoundException("Profile not found"));
+
+        if (candidate.getProfileStatus() != ProfileStatus.LIVE) {
+            throw new IllegalArgumentException("This profile is not available for browsing");
+        }
+
+        ParentProfile candidateParent = parentProfileRepository
+                .findByUserAccountId(candidate.getUserAccount().getId())
+                .orElse(null);
+
+        return ProfileDetailResponse.builder()
+                .profileId(candidate.getId())
+                .displayId(candidate.getDisplayId())
+                .side(candidate.getUserAccount().getSide())
+                .firstName(candidate.getCandidateFirstName())
+                .candidateAge(candidate.getCandidateAge())
+                .candidateHeightCm(candidate.getCandidateHeightCm())
+
+                .district(candidateParent != null ? candidateParent.getDistrict() : null)
+                .state(candidateParent != null ? candidateParent.getState() : null)
+                .maslak(candidateParent != null ? candidateParent.getMaslak() : null)
+
+                .religion(candidate.getReligion())
+                .maritalStatus(candidate.getMaritalStatus())
+                .education(candidate.getEducation())
+                .quranLevel(candidate.getQuranLevel())
+                .namaazRegularity(candidate.getNamaazRegularity())
+                .previouslyMarried(candidate.getPreviouslyMarried())
+
+                .professionType(candidate.getProfessionType())
+                .professionTitle(candidate.getProfessionTitle())
+
+                .mehrOffered(candidate.getMehrOffered())
+                .mehrMinimumExpected(candidate.getMehrMinimumExpected())
+
+                .houseType(candidate.getHouseType())
+                .familyType(candidate.getFamilyType())
+                .expectationsText(candidate.getExpectationsText())
+
+                .hasApprovedPhoto(hasApprovedProfilePhoto(candidate.getId()))
+
+                // No logged-in user, so no match score
+                .match(null)
+
+                .build();
+    }
+
+
 }
