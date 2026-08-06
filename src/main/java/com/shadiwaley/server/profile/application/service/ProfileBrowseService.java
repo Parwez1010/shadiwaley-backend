@@ -171,6 +171,24 @@ public class ProfileBrowseService {
                 .expectationsText(candidate.getExpectationsText())
                 .hasApprovedPhoto(hasApprovedProfilePhoto(candidate.getId()))
                 .match(match)
+                // NEW
+                .dateOfBirth(candidate.getDateOfBirth())
+                .bloodGroup(candidate.getBloodGroup())
+                .complexion(candidate.getComplexion())
+                .bodyType(candidate.getBodyType())
+                .motherTongue(candidate.getMotherTongue())
+                .languagesKnown(candidate.getLanguagesKnown())
+                .sect(candidate.getSect())
+                .diet(candidate.getDiet())
+                .smoker(candidate.getSmoker())
+                .drinker(candidate.getDrinker())
+                .exerciseFrequency(candidate.getExerciseFrequency())
+                .wearsHijab(candidate.getWearsHijab())
+                .familyStatus(candidate.getFamilyStatus())
+                .familyValues(candidate.getFamilyValues())
+                .brothersCount(candidate.getBrothersCount())
+                .sistersCount(candidate.getSistersCount())
+                .interests(candidate.getInterests())
                 .build();
     }
 

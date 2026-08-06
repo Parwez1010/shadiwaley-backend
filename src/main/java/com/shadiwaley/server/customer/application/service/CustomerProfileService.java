@@ -119,8 +119,27 @@ public class CustomerProfileService {
                 .houseType(profile.getHouseType())
                 .familyType(profile.getFamilyType())
                 .expectationsText(profile.getExpectationsText())
+                // NEW
+                .dateOfBirth(profile.getDateOfBirth())
+                .bloodGroup(profile.getBloodGroup())
+                .complexion(profile.getComplexion())
+                .bodyType(profile.getBodyType())
+                .motherTongue(profile.getMotherTongue())
+                .languagesKnown(profile.getLanguagesKnown())
+                .sect(profile.getSect())
+                .diet(profile.getDiet())
+                .smoker(profile.getSmoker())
+                .drinker(profile.getDrinker())
+                .exerciseFrequency(profile.getExerciseFrequency())
+                .wearsHijab(profile.getWearsHijab())
+                .familyStatus(profile.getFamilyStatus())
+                .familyValues(profile.getFamilyValues())
+                .brothersCount(profile.getBrothersCount())
+                .sistersCount(profile.getSistersCount())
+                .interests(profile.getInterests())
                 .build();
     }
+
 
     private CustomerProfileResponse.PreferenceInfo toPreferenceInfo(UserPreferences preferences) {
         if (preferences == null) {

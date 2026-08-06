@@ -1,12 +1,15 @@
 package com.shadiwaley.server.profile.infrastructure.entity;
 
-import com.shadiwaley.server.profile.domain.MaritalStatus;
+import com.shadiwaley.server.profile.domain.*;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Getter
@@ -76,6 +79,71 @@ public class UserProfile {
 
     @Column(name = "expectations_text", length = 500)
     private String expectationsText;
+
+    // ── Basic Information ──────────────────────────────
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Column(name = "blood_group", length = 5)
+    private String bloodGroup;
+
+    @Column(length = 30)
+    private String complexion;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "body_type", length = 30)
+    private BodyType bodyType;
+
+    @Column(name = "mother_tongue", length = 50)
+    private String motherTongue;
+
+    @ElementCollection
+    @CollectionTable(name = "user_profile_language", joinColumns = @JoinColumn(name = "user_profile_id"))
+    @Column(name = "language")
+    private Set<String> languagesKnown = new HashSet<>();
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "family_values", length = 30)
+    private FamilyValues familyValues;
+
+    @Column(length = 50)
+    private String sect;
+
+    // ── Lifestyle ───────────────────────────────────────
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private Diet diet;
+
+    @Column(name = "is_smoker")
+    private Boolean smoker;
+
+    @Column(name = "is_drinker")
+    private Boolean drinker;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "exercise_frequency", length = 30)
+    private ExerciseFrequency exerciseFrequency;
+
+    @Column(name = "wears_hijab")
+    private Boolean wearsHijab;
+
+    // ── Family Details ──────────────────────────────────
+    @Enumerated(EnumType.STRING)
+    @Column(name = "family_status", length = 30)
+    private FamilyStatus familyStatus;
+
+    @Column(name = "brothers_count")
+    private Short brothersCount;
+
+    @Column(name = "sisters_count")
+    private Short sistersCount;
+
+    // ── Interests ────────────────────────────────────────
+    @ElementCollection
+    @CollectionTable(name = "user_profile_interest", joinColumns = @JoinColumn(name = "user_profile_id"))
+    @Column(name = "interest")
+    private Set<String> interests = new HashSet<>();
+
 
     @Enumerated(EnumType.STRING)
     @Column(name = "profile_status", nullable = false, length = 40)

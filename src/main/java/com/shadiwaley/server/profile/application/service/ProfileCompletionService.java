@@ -86,6 +86,7 @@ public class ProfileCompletionService {
         return ProfileStatus.INCOMPLETE;
     }
 
+
     private short calculateCompletion(
             UserAccount userAccount,
             UserProfile profile,
@@ -99,14 +100,23 @@ public class ProfileCompletionService {
                 && hasText(parent.getDistrict())
                 && hasText(parent.getState())
                 && hasText(parent.getMaslak())) {
-            score += 25;
+            score += 20;
         }
 
         if (hasText(profile.getCandidateFirstName())
                 && profile.getCandidateAge() != null
                 && profile.getCandidateHeightCm() != null
                 && hasText(profile.getEducation())) {
-            score += 20;
+            score += 15;
+        }
+
+        // NEW — extended basic info
+        if (hasText(profile.getBloodGroup())
+                && hasText(profile.getComplexion())
+                && profile.getBodyType() != null
+                && hasText(profile.getMotherTongue())
+                && hasItems(profile.getLanguagesKnown())) {
+            score += 10;
         }
 
         if (hasText(profile.getQuranLevel())
@@ -115,8 +125,22 @@ public class ProfileCompletionService {
             score += 15;
         }
 
+        // NEW — lifestyle
+        boolean lifestyleComplete = profile.getDiet() != null
+                && profile.getSmoker() != null
+                && profile.getDrinker() != null
+                && profile.getExerciseFrequency() != null
+                && (isBoy(userAccount) || profile.getWearsHijab() != null);
+
+        if (lifestyleComplete) {
+            score += 10;
+        }
+
+        // family + interests
         if (hasText(profile.getFamilyType())
-                && hasText(profile.getExpectationsText())) {
+                && hasText(profile.getExpectationsText())
+                && profile.getFamilyStatus() != null
+                && profile.getFamilyValues() != null) {
             score += 10;
         }
 
@@ -143,6 +167,7 @@ public class ProfileCompletionService {
         return (short) Math.min(score, 100);
     }
 
+
     private List<MissingFieldResponse> calculateMissingFields(
             UserAccount userAccount,
             UserProfile profile,
@@ -150,68 +175,97 @@ public class ProfileCompletionService {
     ) {
         List<MissingFieldResponse> missing = new ArrayList<>();
 
-
         if (!hasText(parent.getParentName())) {
             missing.add(missing("PARENT_NAME", "Add parent name", "HIGH"));
         }
-
         if (parent.getParentRelation() == null) {
             missing.add(missing("PARENT_RELATION", "Select parent relation", "HIGH"));
         }
-
         if (!hasText(parent.getDistrict())) {
             missing.add(missing("DISTRICT", "Add district", "HIGH"));
         }
-
         if (!hasText(parent.getMaslak())) {
             missing.add(missing("MASLAK", "Select Maslak", "HIGH"));
         }
-
         if (!hasText(profile.getCandidateFirstName())) {
             missing.add(missing("CANDIDATE_NAME", "Add candidate name", "HIGH"));
         }
-
         if (profile.getCandidateAge() == null) {
             missing.add(missing("CANDIDATE_AGE", "Add candidate age", "HIGH"));
         }
-
         if (!hasText(profile.getEducation())) {
             missing.add(missing("EDUCATION", "Add education details", "MEDIUM"));
+        }
+
+        // NEW — extended basic info
+        if (!hasText(profile.getMotherTongue())) {
+            missing.add(missing("MOTHER_TONGUE", "Add mother tongue", "MEDIUM"));
+        }
+        if (!hasText(profile.getComplexion())) {
+            missing.add(missing("COMPLEXION", "Add complexion", "LOW"));
+        }
+        if (profile.getBodyType() == null) {
+            missing.add(missing("BODY_TYPE", "Add body type", "LOW"));
+        }
+        if (!hasItems(profile.getLanguagesKnown())) {
+            missing.add(missing("LANGUAGES_KNOWN", "Add languages known", "LOW"));
         }
 
         if (!hasText(profile.getQuranLevel())) {
             missing.add(missing("QURAN_LEVEL", "Add Quran learning details", "MEDIUM"));
         }
-
         if (!hasText(profile.getNamaazRegularity())) {
             missing.add(missing("NAMAAZ_REGULARITY", "Add prayer regularity details", "MEDIUM"));
         }
-
         if (!hasText(parent.getImamReference())) {
             missing.add(missing("IMAM_REFERENCE", "Add Imam reference", "HIGH"));
+        }
+
+        // NEW — lifestyle
+        if (profile.getDiet() == null) {
+            missing.add(missing("DIET", "Add dietary preference", "MEDIUM"));
+        }
+        if (profile.getSmoker() == null || profile.getDrinker() == null) {
+            missing.add(missing("SMOKING_DRINKING", "Add smoking/drinking habits", "MEDIUM"));
+        }
+        if (isGirl(userAccount) && profile.getWearsHijab() == null) {
+            missing.add(missing("WEARS_HIJAB", "Add hijab preference", "MEDIUM"));
+        }
+
+        // NEW — family
+        if (profile.getFamilyStatus() == null) {
+            missing.add(missing("FAMILY_STATUS", "Add family status", "MEDIUM"));
+        }
+        if (profile.getFamilyValues() == null) {
+            missing.add(missing("FAMILY_VALUES", "Add family values", "MEDIUM"));
+        }
+        if (!hasItems(profile.getInterests())) {
+            missing.add(missing("INTERESTS", "Add a few interests", "LOW"));
         }
 
         if (isBoy(userAccount) && profile.getMehrOffered() == null) {
             missing.add(missing("MEHR_OFFERED", "Add Mehr offered", "HIGH"));
         }
-
         if (isGirl(userAccount) && profile.getMehrMinimumExpected() == null) {
             missing.add(missing("MEHR_EXPECTED", "Add expected Mehr", "HIGH"));
         }
-
         if (!hasProfilePhoto(profile)) {
             missing.add(missing("PROFILE_PHOTO", "Upload candidate photo", "HIGH"));
         }
-
         if (!hasIdProof(profile)) {
             missing.add(missing("ID_PROOF", "Upload ID proof", "HIGH"));
         }
-
         if (isBoy(userAccount) && !hasIncomeProof(profile)) {
             missing.add(missing("INCOME_PROOF", "Upload income proof", "MEDIUM"));
         }
+
         return missing;
     }
+
+    private boolean hasItems(java.util.Set<String> values) {
+        return values != null && !values.isEmpty();
+    }
+
 
     private MissingFieldResponse missing(String field, String label, String priority) {
         return MissingFieldResponse.builder()

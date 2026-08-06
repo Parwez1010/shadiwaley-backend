@@ -44,16 +44,26 @@ public class MatchScoreService {
                 candidateProfile.getFamilyType()
         );
 
-        if (maslakMatched) score += 30;
-        if (districtMatched) score += 20;
-        if (ageMatched) score += 20;
-        if (educationMatched) score += 15;
-        if (familyTypeMatched) score += 10;
+        boolean dietMatched = viewerProfile.getDiet() != null
+                && viewerProfile.getDiet() == candidateProfile.getDiet();
+
+        boolean valuesMatched = viewerProfile.getFamilyValues() != null
+                && viewerProfile.getFamilyValues() == candidateProfile.getFamilyValues();
+
+        boolean sectMatched = matches(viewerProfile.getSect(), candidateProfile.getSect());
+
+        if (maslakMatched) score += 25;
+        if (districtMatched) score += 15;
+        if (ageMatched) score += 15;
+        if (educationMatched) score += 12;
+        if (familyTypeMatched) score += 8;
+        if (sectMatched) score += 10;
+        if (dietMatched) score += 8;
+        if (valuesMatched) score += 7;
 
         if (candidateProfile.getQuranLevel() != null && !candidateProfile.getQuranLevel().isBlank()) {
             score += 3;
         }
-
         if (candidateProfile.getNamaazRegularity() != null && !candidateProfile.getNamaazRegularity().isBlank()) {
             score += 2;
         }

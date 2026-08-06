@@ -1,12 +1,13 @@
 package com.shadiwaley.server.customer.dto.response;
 
 import com.shadiwaley.server.parent.domain.ParentRelation;
-import com.shadiwaley.server.profile.domain.MaritalStatus;
-import com.shadiwaley.server.profile.domain.ProfileStatus;
+import com.shadiwaley.server.profile.domain.*;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Getter
@@ -61,6 +62,25 @@ public class CustomerProfileResponse {
         private String houseType;
         private String familyType;
         private String expectationsText;
+
+        // NEW
+        private LocalDate dateOfBirth;
+        private String bloodGroup;
+        private String complexion;
+        private BodyType bodyType;
+        private String motherTongue;
+        private Set<String> languagesKnown;
+        private String sect;
+        private Diet diet;
+        private Boolean smoker;
+        private Boolean drinker;
+        private ExerciseFrequency exerciseFrequency;
+        private Boolean wearsHijab;
+        private FamilyStatus familyStatus;
+        private FamilyValues familyValues;
+        private Short brothersCount;
+        private Short sistersCount;
+        private Set<String> interests;
     }
 
     @Getter

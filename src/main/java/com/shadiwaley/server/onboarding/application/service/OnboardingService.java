@@ -22,6 +22,8 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.UUID;
 
 @Service
@@ -153,6 +155,53 @@ public class OnboardingService {
         if (request.getExpectationsText() != null) profile.setExpectationsText(request.getExpectationsText());
         if (request.getReligion() != null) profile.setReligion(request.getReligion());
         if (request.getMaritalStatus() != null) profile.setMaritalStatus(request.getMaritalStatus());
+
+        if (request.getCandidateFirstName() != null) profile.setCandidateFirstName(request.getCandidateFirstName());
+
+        if (request.getDateOfBirth() != null) {
+            profile.setDateOfBirth(request.getDateOfBirth());
+            profile.setCandidateAge((short) Period.between(request.getDateOfBirth(), LocalDate.now()).getYears());
+        } else if (request.getCandidateAge() != null) {
+            profile.setCandidateAge(request.getCandidateAge());
+        }
+
+        if (request.getCandidateHeightCm() != null) profile.setCandidateHeightCm(request.getCandidateHeightCm());
+        if (request.getBloodGroup() != null) profile.setBloodGroup(request.getBloodGroup());
+        if (request.getComplexion() != null) profile.setComplexion(request.getComplexion());
+        if (request.getBodyType() != null) profile.setBodyType(request.getBodyType());
+        if (request.getMotherTongue() != null) profile.setMotherTongue(request.getMotherTongue());
+        if (request.getLanguagesKnown() != null) profile.setLanguagesKnown(request.getLanguagesKnown());
+        if (request.getEducation() != null) profile.setEducation(request.getEducation());
+        if (request.getReligion() != null) profile.setReligion(request.getReligion());
+        if (request.getSect() != null) profile.setSect(request.getSect());
+        if (request.getMaritalStatus() != null) profile.setMaritalStatus(request.getMaritalStatus());
+        if (request.getQuranLevel() != null) profile.setQuranLevel(request.getQuranLevel());
+        if (request.getNamaazRegularity() != null) profile.setNamaazRegularity(request.getNamaazRegularity());
+        if (request.getPreviouslyMarried() != null) profile.setPreviouslyMarried(request.getPreviouslyMarried());
+
+        if (request.getDiet() != null) profile.setDiet(request.getDiet());
+        if (request.getSmoker() != null) profile.setSmoker(request.getSmoker());
+        if (request.getDrinker() != null) profile.setDrinker(request.getDrinker());
+        if (request.getExerciseFrequency() != null) profile.setExerciseFrequency(request.getExerciseFrequency());
+        if (request.getWearsHijab() != null) profile.setWearsHijab(request.getWearsHijab());
+
+        if (request.getProfessionType() != null) profile.setProfessionType(request.getProfessionType());
+        if (request.getProfessionTitle() != null) profile.setProfessionTitle(request.getProfessionTitle());
+        if (request.getMonthlyIncome() != null) profile.setMonthlyIncome(request.getMonthlyIncome());
+        if (request.getMehrOffered() != null) profile.setMehrOffered(request.getMehrOffered());
+        if (request.getMehrMinimumExpected() != null) profile.setMehrMinimumExpected(request.getMehrMinimumExpected());
+        if (request.getHouseType() != null) profile.setHouseType(request.getHouseType());
+        if (request.getFamilyType() != null) profile.setFamilyType(request.getFamilyType());
+        if (request.getFamilyStatus() != null) profile.setFamilyStatus(request.getFamilyStatus());
+        if (request.getFamilyValues() != null) profile.setFamilyValues(request.getFamilyValues());
+        if (request.getBrothersCount() != null) profile.setBrothersCount(request.getBrothersCount());
+        if (request.getSistersCount() != null) profile.setSistersCount(request.getSistersCount());
+
+        if (request.getInterests() != null) profile.setInterests(request.getInterests());
+        if (request.getExpectationsText() != null) profile.setExpectationsText(request.getExpectationsText());
+
+
+
     }
 
     private void updatePreferences(UserPreferences preferences, PreferenceInfoRequest request) {
