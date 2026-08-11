@@ -173,7 +173,6 @@ public class OnboardingService {
         if (request.getLanguagesKnown() != null) profile.setLanguagesKnown(request.getLanguagesKnown());
         if (request.getEducation() != null) profile.setEducation(request.getEducation());
         if (request.getReligion() != null) profile.setReligion(request.getReligion());
-        if (request.getSect() != null) profile.setSect(request.getSect());
         if (request.getMaritalStatus() != null) profile.setMaritalStatus(request.getMaritalStatus());
         if (request.getQuranLevel() != null) profile.setQuranLevel(request.getQuranLevel());
         if (request.getNamaazRegularity() != null) profile.setNamaazRegularity(request.getNamaazRegularity());

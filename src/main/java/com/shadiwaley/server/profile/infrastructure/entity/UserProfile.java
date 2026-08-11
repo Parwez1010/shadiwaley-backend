@@ -106,8 +106,6 @@ public class UserProfile {
     @Column(name = "family_values", length = 30)
     private FamilyValues familyValues;
 
-    @Column(length = 50)
-    private String sect;
 
     // ── Lifestyle ───────────────────────────────────────
     @Enumerated(EnumType.STRING)

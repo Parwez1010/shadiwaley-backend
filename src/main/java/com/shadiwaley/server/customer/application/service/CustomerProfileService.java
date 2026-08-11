@@ -126,7 +126,6 @@ public class CustomerProfileService {
                 .bodyType(profile.getBodyType())
                 .motherTongue(profile.getMotherTongue())
                 .languagesKnown(profile.getLanguagesKnown())
-                .sect(profile.getSect())
                 .diet(profile.getDiet())
                 .smoker(profile.getSmoker())
                 .drinker(profile.getDrinker())

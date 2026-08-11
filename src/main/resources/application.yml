@@ -29,6 +29,10 @@ spring:
       host: localhost
       port: 6379
 
+  jackson:
+    deserialization:
+      accept-empty-string-as-null-object: true
+
 app:
   jwt:
     access-token-expiry-minutes: 60

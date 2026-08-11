@@ -178,7 +178,6 @@ public class ProfileBrowseService {
                 .bodyType(candidate.getBodyType())
                 .motherTongue(candidate.getMotherTongue())
                 .languagesKnown(candidate.getLanguagesKnown())
-                .sect(candidate.getSect())
                 .diet(candidate.getDiet())
                 .smoker(candidate.getSmoker())
                 .drinker(candidate.getDrinker())

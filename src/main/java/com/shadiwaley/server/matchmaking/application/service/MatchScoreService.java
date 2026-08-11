@@ -23,6 +23,11 @@ public class MatchScoreService {
                 candidateParent.getMaslak()
         );
 
+        boolean casteMatched = matches(
+                viewerPreferences.getPreferredCaste(),
+                candidateParent.getCaste()
+        );
+
         boolean districtMatched = matches(
                 viewerPreferences.getPreferredDistrict(),
                 candidateParent.getDistrict()
@@ -50,14 +55,12 @@ public class MatchScoreService {
         boolean valuesMatched = viewerProfile.getFamilyValues() != null
                 && viewerProfile.getFamilyValues() == candidateProfile.getFamilyValues();
 
-        boolean sectMatched = matches(viewerProfile.getSect(), candidateProfile.getSect());
-
-        if (maslakMatched) score += 25;
-        if (districtMatched) score += 15;
-        if (ageMatched) score += 15;
-        if (educationMatched) score += 12;
+        if (maslakMatched) score += 22;
+        if (casteMatched) score += 15;
+        if (districtMatched) score += 12;
+        if (ageMatched) score += 13;
+        if (educationMatched) score += 10;
         if (familyTypeMatched) score += 8;
-        if (sectMatched) score += 10;
         if (dietMatched) score += 8;
         if (valuesMatched) score += 7;
 
@@ -71,6 +74,7 @@ public class MatchScoreService {
         return MatchBreakdownResponse.builder()
                 .totalScore(Math.min(score, 100))
                 .maslakMatched(maslakMatched)
+                .casteMatched(casteMatched)
                 .districtMatched(districtMatched)
                 .ageMatched(ageMatched)
                 .educationMatched(educationMatched)

@@ -8,6 +8,7 @@ import lombok.Getter;
 public class MatchBreakdownResponse {
     private int totalScore;
     private boolean maslakMatched;
+    private boolean casteMatched;
     private boolean districtMatched;
     private boolean ageMatched;
     private boolean educationMatched;

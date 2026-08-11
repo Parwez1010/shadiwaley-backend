@@ -23,8 +23,20 @@ public class OnboardingOptionsResponse {
     private List<String> preferredCaste;
     private List<String> maslak;
     private List<String> preferredMaslak;
-    private  List<String> state;
-    private  List<String> district;
-    private  List<String> preferredState;
-    private  List<String> preferredDistrict;
+    private List<String> state;
+    private List<String> district;
+    private List<String> preferredState;
+    private List<String> preferredDistrict;
+
+    // NEW
+    private List<String> bodyType;
+    private List<String> diet;
+    private List<String> exerciseFrequency;
+    private List<String> familyStatus;
+    private List<String> familyValues;
+    private List<String> bloodGroup;
+    private List<String> complexion;
+    private List<String> motherTongue;
+    private List<String> languagesKnown;
+    private List<String> interests;
 }

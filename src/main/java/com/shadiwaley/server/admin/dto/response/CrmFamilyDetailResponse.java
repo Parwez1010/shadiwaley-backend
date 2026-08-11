@@ -1,12 +1,14 @@
 package com.shadiwaley.server.admin.dto.response;
 
-import com.shadiwaley.server.profile.domain.ProfileStatus;
+import com.shadiwaley.server.profile.domain.*;
 import com.shadiwaley.server.user.domain.UserSide;
 import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.Set;
 import java.util.UUID;
 
 @Getter
@@ -48,6 +50,31 @@ public class CrmFamilyDetailResponse {
     private String familyType;
     private String expectationsText;
 
+    // NEW — extended basic info
+    private LocalDate dateOfBirth;
+    private String bloodGroup;
+    private String complexion;
+    private BodyType bodyType;
+    private String motherTongue;
+    private Set<String> languagesKnown;
+    private String sect;
+
+    // NEW — lifestyle
+    private Diet diet;
+    private Boolean smoker;
+    private Boolean drinker;
+    private ExerciseFrequency exerciseFrequency;
+    private Boolean wearsHijab;
+
+    // NEW — family
+    private FamilyStatus familyStatus;
+    private FamilyValues familyValues;
+    private Short brothersCount;
+    private Short sistersCount;
+
+    // NEW — interests
+    private Set<String> interests;
+
     // Preferences
     private String preferredMaslak;
     private String preferredCaste;
@@ -78,6 +105,4 @@ public class CrmFamilyDetailResponse {
 
     private String paymentStatus;
     private String subscriptionStatus;
-
-
 }

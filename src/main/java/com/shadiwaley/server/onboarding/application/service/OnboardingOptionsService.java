@@ -4,6 +4,7 @@ import com.shadiwaley.server.media.domain.MediaType;
 import com.shadiwaley.server.media.domain.WhatsappConsent;
 import com.shadiwaley.server.onboarding.dto.response.OnboardingOptionsResponse;
 import com.shadiwaley.server.parent.domain.ParentRelation;
+import com.shadiwaley.server.profile.domain.*;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
@@ -211,6 +212,63 @@ public class OnboardingOptionsService {
                         "GOPALGANJ",
                         "PATNA",
                         "HAJIPUR"
+                ))
+                .bodyType(toNames(BodyType.values()))
+                .diet(toNames(Diet.values()))
+                .exerciseFrequency(toNames(ExerciseFrequency.values()))
+                .familyStatus(toNames(FamilyStatus.values()))
+                .familyValues(toNames(FamilyValues.values()))
+                .bloodGroup(List.of(
+                        "A_POSITIVE", "A_NEGATIVE",
+                        "B_POSITIVE", "B_NEGATIVE",
+                        "AB_POSITIVE", "AB_NEGATIVE",
+                        "O_POSITIVE", "O_NEGATIVE"
+                ))
+                .complexion(List.of(
+                        "VERY_FAIR",
+                        "FAIR",
+                        "WHEATISH",
+                        "WHEATISH_BROWN",
+                        "DARK"
+                ))
+                .motherTongue(List.of(
+                        "URDU",
+                        "HINDI",
+                        "ENGLISH",
+                        "ARABIC",
+                        "BENGALI",
+                        "PUNJABI",
+                        "GUJARATI",
+                        "MARATHI",
+                        "TAMIL",
+                        "TELUGU",
+                        "OTHER"
+                ))
+                .languagesKnown(List.of(
+                        "URDU",
+                        "HINDI",
+                        "ENGLISH",
+                        "ARABIC",
+                        "BENGALI",
+                        "PUNJABI",
+                        "GUJARATI",
+                        "MARATHI",
+                        "TAMIL",
+                        "TELUGU"
+                ))
+                .interests(List.of(
+                        "READING_BOOKS",
+                        "COOKING",
+                        "TRAVELLING",
+                        "CALLIGRAPHY",
+                        "ISLAMIC_LECTURES",
+                        "GARDENING",
+                        "PHOTOGRAPHY",
+                        "VOLUNTEERING",
+                        "SPORTS",
+                        "MUSIC",
+                        "WRITING",
+                        "FITNESS"
                 ))
                 .mediaType(toNames(MediaType.values()))
                 .whatsappConsent(toNames(WhatsappConsent.values()))

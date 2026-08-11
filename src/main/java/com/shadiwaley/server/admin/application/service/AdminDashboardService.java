@@ -278,6 +278,32 @@ public class AdminDashboardService {
                 .requireImamRef(preferences != null && preferences.isRequireImamRef())
                 .requireIdVerified(preferences != null && preferences.isRequireIdVerified())
 
+                // NEW — extended basic info
+                .dateOfBirth(profile.getDateOfBirth())
+                .bloodGroup(profile.getBloodGroup())
+                .complexion(profile.getComplexion())
+                .bodyType(profile.getBodyType())
+                .motherTongue(profile.getMotherTongue())
+                .languagesKnown(profile.getLanguagesKnown())
+
+                // NEW — lifestyle
+                .diet(profile.getDiet())
+                .smoker(profile.getSmoker())
+                .drinker(profile.getDrinker())
+                .exerciseFrequency(profile.getExerciseFrequency())
+                .wearsHijab(profile.getWearsHijab())
+
+                // NEW — family
+                .familyStatus(profile.getFamilyStatus())
+                .familyValues(profile.getFamilyValues())
+                .brothersCount(profile.getBrothersCount())
+                .sistersCount(profile.getSistersCount())
+
+                // NEW — interests
+                .interests(profile.getInterests())
+
+                .preferredMaslak(preferences != null ? preferences.getPreferredMaslak() : null)
+
                 .completionPct(profile.getCompletionPct())
                 .profileStatus(profile.getProfileStatus())
 
