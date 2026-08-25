@@ -1,9 +1,47 @@
 -- =========================================================
--- Disable old plans
+-- V58 - Revenue plan entitlements and current plans
+-- =========================================================
+
+
+-- =========================================================
+-- 1. Add revenue plan entitlement columns
+-- =========================================================
+
+ALTER TABLE revenue_plan
+    ADD COLUMN IF NOT EXISTS billing_type VARCHAR(20) NOT NULL DEFAULT 'ONE_TIME';
+
+ALTER TABLE revenue_plan
+    ADD COLUMN IF NOT EXISTS rishta_requests_per_month INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE revenue_plan
+    ADD COLUMN IF NOT EXISTS profiles_per_week INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE revenue_plan
+    ADD COLUMN IF NOT EXISTS browse_profiles BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE revenue_plan
+    ADD COLUMN IF NOT EXISTS family_chat BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE revenue_plan
+    ADD COLUMN IF NOT EXISTS autopilot_dispatch BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE revenue_plan
+    ADD COLUMN IF NOT EXISTS dedicated_crm BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE revenue_plan
+    ADD COLUMN IF NOT EXISTS meeting_coordination BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE revenue_plan
+    ADD COLUMN IF NOT EXISTS priority_profile_review BOOLEAN NOT NULL DEFAULT FALSE;
+
+
+-- =========================================================
+-- 2. Disable old plans
 -- =========================================================
 
 UPDATE revenue_plan
-SET active = false,
+SET
+    active = false,
     updated_at = NOW()
 WHERE code IN (
     'BASIC',
@@ -16,7 +54,7 @@ WHERE code IN (
 
 
 -- =========================================================
--- FREE ONBOARDING
+-- 3. FREE ONBOARDING
 -- =========================================================
 
 UPDATE revenue_plan
@@ -31,12 +69,22 @@ SET
     sort_order = 1,
     features =
         'Create family profile|Complete onboarding|Profile verification|Basic dashboard access',
+
+    rishta_requests_per_month = 0,
+    profiles_per_week = 0,
+    browse_profiles = false,
+    family_chat = false,
+    autopilot_dispatch = false,
+    dedicated_crm = false,
+    meeting_coordination = false,
+    priority_profile_review = false,
+
     updated_at = NOW()
 WHERE code = 'FREE_ONBOARDING';
 
 
 -- =========================================================
--- 6 MONTH PLAN - ₹999
+-- 4. SIX MONTH PLAN - ₹999
 -- =========================================================
 
 INSERT INTO revenue_plan (
@@ -75,6 +123,7 @@ SELECT
     'ONE_TIME',
     true,
     2,
+
     'Unlimited profile browsing|5 rishta requests per month|Family chat after acceptance|CRM assistance',
 
     5,
@@ -96,7 +145,7 @@ WHERE NOT EXISTS (
 
 
 -- =========================================================
--- LIFETIME PLAN - ₹1999
+-- 5. LIFETIME PLAN - ₹1999
 -- =========================================================
 
 INSERT INTO revenue_plan (
@@ -135,6 +184,7 @@ SELECT
     'ONE_TIME',
     true,
     3,
+
     'Unlimited profile browsing|Unlimited rishta requests|Family chat after acceptance|CRM assistance|Priority profile review|Meeting coordination',
 
     -1,
