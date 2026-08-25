@@ -1,11 +1,13 @@
 package com.shadiwaley.server.subscription.domain;
 
+import java.math.BigDecimal;
 import java.util.List;
+
 
 public record PlanDefinition(
         PlanType planType,
         String displayName,
-        int amountPaise,
+        BigDecimal price,
         String billingLabel,
         int durationDays,
         int rishtaRequestsPerMonth,

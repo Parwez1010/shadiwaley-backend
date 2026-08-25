@@ -7,7 +7,6 @@ import com.shadiwaley.server.profile.infrastructure.repository.UserProfileReposi
 import com.shadiwaley.server.revenue.domain.PaymentMode;
 import com.shadiwaley.server.revenue.domain.RevenuePaymentStatus;
 import com.shadiwaley.server.revenue.domain.SubscriptionSource;
-import com.shadiwaley.server.revenue.domain.SubscriptionStatus;
 import com.shadiwaley.server.revenue.dto.request.AdminCreateRazorpayOrderRequest;
 import com.shadiwaley.server.revenue.dto.request.CreateRazorpayOrderRequest;
 import com.shadiwaley.server.revenue.dto.request.VerifyRazorpayPaymentRequest;
@@ -21,6 +20,7 @@ import com.shadiwaley.server.revenue.infrastructure.repository.FamilySubscriptio
 import com.shadiwaley.server.revenue.infrastructure.repository.PaymentTransactionRepository;
 import com.shadiwaley.server.revenue.infrastructure.repository.RevenuePlanRepository;
 import com.shadiwaley.server.security.AuthUser;
+import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -54,6 +54,7 @@ public class RazorpayPaymentService {
 
     @Transactional
     public RazorpayOrderResponse createOrder(CreateRazorpayOrderRequest request) throws Exception {
+
         UUID userId = AuthUser.getCurrentUserId();
 
         UserAccount user = userAccountRepository.findById(userId)
@@ -69,10 +70,12 @@ public class RazorpayPaymentService {
             throw new IllegalArgumentException("Razorpay order can be created only for paid plans");
         }
 
+        // Look up any existing active subscription for THIS user before creating the new one.
         subscriptionRepository
-                .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(userId)
+                .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(user.getId())
                 .ifPresent(existing -> {
                     existing.setCurrentSubscription(false);
+                    existing.setSubscriptionStatus(SubscriptionStatus.CANCELLED);
                     subscriptionRepository.save(existing);
                 });
 
@@ -84,13 +87,14 @@ public class RazorpayPaymentService {
         subscription.setPlanName(plan.getName());
         subscription.setAmount(plan.getPrice());
         subscription.setCurrency(plan.getCurrency());
-        subscription.setSubscriptionStatus(SubscriptionStatus.PAYMENT_PENDING);
+        subscription.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
         subscription.setPaymentStatus(RevenuePaymentStatus.PENDING);
         subscription.setCurrentSubscription(true);
         subscription.setSource(SubscriptionSource.FAMILY_ONBOARDING);
         subscription.setNote("Razorpay payment initiated");
 
         FamilySubscription savedSubscription = subscriptionRepository.save(subscription);
+
 
         PaymentTransaction payment = new PaymentTransaction();
         payment.setSubscription(savedSubscription);

@@ -46,6 +46,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/subscriptions/plans").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
 
+                        .requestMatchers(HttpMethod.GET, "/api/v1/customer/payments/plans").permitAll()
+                        .requestMatchers("/actuator/health").permitAll()
+
+
                         .requestMatchers("/api/v1/admin/**")
                         .hasAnyRole("SUPER_ADMIN", "ADMIN", "CRM_AGENT", "VERIFIER", "SUPPORT_AGENT")
 

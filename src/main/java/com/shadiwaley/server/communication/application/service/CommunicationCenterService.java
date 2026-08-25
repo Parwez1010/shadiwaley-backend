@@ -22,10 +22,10 @@ import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
 import com.shadiwaley.server.employee.infrastructure.repository.EmployeeAccountRepository;
 import com.shadiwaley.server.parent.infrastructure.entity.ParentProfile;
 import com.shadiwaley.server.parent.infrastructure.repository.ParentProfileRepository;
-import com.shadiwaley.server.revenue.domain.SubscriptionStatus;
 import com.shadiwaley.server.revenue.infrastructure.entity.FamilySubscription;
 import com.shadiwaley.server.revenue.infrastructure.repository.FamilySubscriptionRepository;
 import com.shadiwaley.server.security.AuthUser;
+import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
 import com.shadiwaley.server.support.domain.SupportTicketPriority;
 import jakarta.persistence.criteria.Predicate;
 
@@ -596,7 +596,7 @@ public class CommunicationCenterService {
         return familySubscriptionRepository
                 .countByPlanCodeAndSubscriptionStatus(
                         planCode,
-                        com.shadiwaley.server.revenue.domain.SubscriptionStatus.ACTIVE
+                        SubscriptionStatus.ACTIVE
                 );
     }
 

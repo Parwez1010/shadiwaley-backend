@@ -1,7 +1,7 @@
 package com.shadiwaley.server.revenue.dto.response;
 
 import com.shadiwaley.server.revenue.domain.RevenuePaymentStatus;
-import com.shadiwaley.server.revenue.domain.SubscriptionStatus;
+import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
 import lombok.Builder;
 import lombok.Getter;
 

@@ -1,8 +1,8 @@
 package com.shadiwaley.server.revenue.infrastructure.repository;
 
 import com.shadiwaley.server.revenue.domain.RevenuePaymentStatus;
-import com.shadiwaley.server.revenue.domain.SubscriptionStatus;
 import com.shadiwaley.server.revenue.infrastructure.entity.FamilySubscription;
+import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
@@ -21,6 +21,6 @@ public interface FamilySubscriptionRepository extends JpaRepository<FamilySubscr
 
     long countByPlanCodeAndSubscriptionStatus(
             String planCode,
-            com.shadiwaley.server.revenue.domain.SubscriptionStatus subscriptionStatus
+            SubscriptionStatus subscriptionStatus
     );
 }

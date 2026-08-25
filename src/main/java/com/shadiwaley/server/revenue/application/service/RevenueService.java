@@ -18,6 +18,7 @@ import com.shadiwaley.server.revenue.infrastructure.entity.RevenuePlan;
 import com.shadiwaley.server.revenue.infrastructure.repository.FamilySubscriptionRepository;
 import com.shadiwaley.server.revenue.infrastructure.repository.PaymentTransactionRepository;
 import com.shadiwaley.server.revenue.infrastructure.repository.RevenuePlanRepository;
+import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import com.shadiwaley.server.user.infrastructure.repository.UserAccountRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -50,62 +51,119 @@ public class RevenueService {
     private final AuditLogService auditLogService;
     private final ParentProfileRepository parentProfileRepository;
 
+
+    // =========================================================
+    // PLANS
+    // =========================================================
+
     @Transactional(readOnly = true)
     public List<RevenuePlanResponse> getPlans() {
-        return revenuePlanRepository.findByActiveTrueOrderBySortOrderAsc()
+
+        return revenuePlanRepository
+                .findByActiveTrueOrderBySortOrderAsc()
                 .stream()
                 .map(this::toPlanResponse)
                 .toList();
     }
 
+
+    // =========================================================
+    // ASSIGN PLAN
+    // =========================================================
+
     @Transactional
     public SubscriptionResponse assignPlan(AssignPlanRequest request) {
+
         UserAccount user = userAccountRepository.findById(request.getUserId())
-                .orElseThrow(() -> new EntityNotFoundException("Family user not found"));
+                .orElseThrow(() ->
+                        new EntityNotFoundException("Family user not found")
+                );
 
         UserProfile profile = userProfileRepository.findById(request.getProfileId())
-                .orElseThrow(() -> new EntityNotFoundException("Profile not found"));
+                .orElseThrow(() ->
+                        new EntityNotFoundException("Profile not found")
+                );
 
         revenuePermissionService.assertCanManageFamily(user.getId());
 
-        RevenuePlan plan = revenuePlanRepository.findByCode(request.getPlanCode())
-                .orElseThrow(() -> new EntityNotFoundException("Active plan not found"));
+        RevenuePlan plan = revenuePlanRepository
+                .findByCodeAndActiveTrue(request.getPlanCode())
+                .orElseThrow(() ->
+                        new EntityNotFoundException(
+                                "Active plan not found: " + request.getPlanCode()
+                        )
+                );
+
 
         familySubscriptionRepository
-                .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(user.getId())
+                .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(
+                        user.getId()
+                )
                 .ifPresent(existing -> {
                     existing.setCurrentSubscription(false);
                     familySubscriptionRepository.save(existing);
                 });
 
-        EmployeeAccount actor = revenuePermissionService.getCurrentEmployeeOrNull();
+        EmployeeAccount actor =
+                revenuePermissionService.getCurrentEmployeeOrNull();
 
         FamilySubscription subscription = new FamilySubscription();
+
         subscription.setUserAccount(user);
         subscription.setUserProfile(profile);
+
         subscription.setPlan(plan);
         subscription.setPlanCode(plan.getCode());
         subscription.setPlanName(plan.getName());
+
         subscription.setAmount(plan.getPrice());
         subscription.setCurrency(plan.getCurrency());
-        subscription.setSource(request.getSource() != null ? request.getSource() : SubscriptionSource.ADMIN_MANUAL);
+
+        subscription.setSource(
+                request.getSource() != null
+                        ? request.getSource()
+                        : SubscriptionSource.ADMIN_MANUAL
+        );
+
         subscription.setNote(request.getNote());
+
         subscription.setAssignedByEmployee(actor);
-        subscription.setAssignedByName(actor != null ? actor.getFullName() : "System");
+
+        subscription.setAssignedByName(
+                actor != null
+                        ? actor.getFullName()
+                        : "System"
+        );
 
         if (isFreePlan(plan)) {
-            subscription.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
-            subscription.setPaymentStatus(RevenuePaymentStatus.NOT_REQUIRED);
+
+            subscription.setSubscriptionStatus(
+                    SubscriptionStatus.ACTIVE
+            );
+
+            subscription.setPaymentStatus(
+                    RevenuePaymentStatus.NOT_REQUIRED
+            );
+
             subscription.setStartAt(Instant.now());
             subscription.setEndAt(null);
+
         } else {
-            subscription.setSubscriptionStatus(SubscriptionStatus.PAYMENT_PENDING);
-            subscription.setPaymentStatus(RevenuePaymentStatus.PENDING);
+
+            subscription.setSubscriptionStatus(
+                    SubscriptionStatus.PAYMENT_PENDING
+            );
+
+            subscription.setPaymentStatus(
+                    RevenuePaymentStatus.PENDING
+            );
+
             subscription.setStartAt(null);
             subscription.setEndAt(null);
         }
 
-        FamilySubscription saved = familySubscriptionRepository.save(subscription);
+        FamilySubscription saved =
+                familySubscriptionRepository.save(subscription);
 
         auditLogService.record(
                 AuditAction.PLAN_ASSIGNED,
@@ -117,43 +175,90 @@ public class RevenueService {
         return toSubscriptionResponse(saved);
     }
 
+
+    // =========================================================
+    // MANUAL PAYMENT
+    // =========================================================
+
     @Transactional
-    public ManualPaymentResponse recordManualPayment(ManualPaymentRequest request) {
+    public ManualPaymentResponse recordManualPayment(
+            ManualPaymentRequest request
+    ) {
+
         UserAccount user = userAccountRepository.findById(request.getUserId())
-                .orElseThrow(() -> new EntityNotFoundException("Family user not found"));
+                .orElseThrow(() ->
+                        new EntityNotFoundException("Family user not found")
+                );
 
         UserProfile profile = userProfileRepository.findById(request.getProfileId())
-                .orElseThrow(() -> new EntityNotFoundException("Profile not found"));
+                .orElseThrow(() ->
+                        new EntityNotFoundException("Profile not found")
+                );
 
         revenuePermissionService.assertCanManageFamily(user.getId());
 
-        FamilySubscription subscription = familySubscriptionRepository.findById(request.getSubscriptionId())
-                .orElseThrow(() -> new EntityNotFoundException("Subscription not found"));
+        FamilySubscription subscription =
+                familySubscriptionRepository.findById(
+                                request.getSubscriptionId()
+                        )
+                        .orElseThrow(() ->
+                                new EntityNotFoundException(
+                                        "Subscription not found"
+                                )
+                        );
 
         validateManualPayment(request, subscription);
 
-        EmployeeAccount actor = revenuePermissionService.getCurrentEmployeeOrNull();
+        EmployeeAccount actor =
+                revenuePermissionService.getCurrentEmployeeOrNull();
 
         PaymentTransaction payment = new PaymentTransaction();
+
         payment.setSubscription(subscription);
         payment.setUserAccount(user);
         payment.setUserProfile(profile);
+
         payment.setPlanCode(subscription.getPlanCode());
         payment.setPlanName(subscription.getPlanName());
+
         payment.setAmount(request.getAmount());
         payment.setCurrency(subscription.getCurrency());
+
         payment.setPaymentMode(request.getPaymentMode());
         payment.setPaymentStatus(request.getPaymentStatus());
-        payment.setPaymentReference(request.getPaymentReference());
-        payment.setPaymentNote(request.getPaymentNote());
+
+        payment.setPaymentReference(
+                request.getPaymentReference()
+        );
+
+        payment.setPaymentNote(
+                request.getPaymentNote()
+        );
+
         payment.setReceivedByEmployee(actor);
-        payment.setReceivedByName(actor != null ? actor.getFullName() : "System");
+
+        payment.setReceivedByName(
+                actor != null
+                        ? actor.getFullName()
+                        : "System"
+        );
+
+
+        // ---------------------------------------------------------
+        // PAID
+        // ---------------------------------------------------------
 
         if (request.getPaymentStatus() == RevenuePaymentStatus.PAID) {
+
             payment.setPaidAt(Instant.now());
 
-            subscription.setPaymentStatus(RevenuePaymentStatus.PAID);
-            subscription.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
+            subscription.setPaymentStatus(
+                    RevenuePaymentStatus.PAID
+            );
+
+            subscription.setSubscriptionStatus(
+                    SubscriptionStatus.ACTIVE
+            );
 
             if (subscription.getStartAt() == null) {
                 subscription.setStartAt(Instant.now());
@@ -161,33 +266,71 @@ public class RevenueService {
 
             if (subscription.getPlan().getDurationDays() != null
                     && subscription.getPlan().getDurationDays() > 0) {
-                subscription.setEndAt(subscription.getStartAt().plusSeconds(
-                        subscription.getPlan().getDurationDays() * 86400L
-                ));
+
+                subscription.setEndAt(
+                        subscription.getStartAt()
+                                .plusSeconds(
+                                        subscription.getPlan()
+                                                .getDurationDays()
+                                                * 86400L
+                                )
+                );
             }
         }
 
+
+        // ---------------------------------------------------------
+        // PENDING
+        // ---------------------------------------------------------
+
         if (request.getPaymentStatus() == RevenuePaymentStatus.PENDING) {
-            subscription.setPaymentStatus(RevenuePaymentStatus.PENDING);
-            subscription.setSubscriptionStatus(SubscriptionStatus.PAYMENT_PENDING);
+
+            subscription.setPaymentStatus(
+                    RevenuePaymentStatus.PENDING
+            );
+
+            subscription.setSubscriptionStatus(
+                    SubscriptionStatus.PAYMENT_PENDING
+            );
         }
 
+
+        // ---------------------------------------------------------
+        // REFUNDED
+        // ---------------------------------------------------------
+
         if (request.getPaymentStatus() == RevenuePaymentStatus.REFUNDED) {
-            subscription.setPaymentStatus(RevenuePaymentStatus.REFUNDED);
-            subscription.setSubscriptionStatus(SubscriptionStatus.CANCELLED);
+
+            subscription.setPaymentStatus(
+                    RevenuePaymentStatus.REFUNDED
+            );
+
+            subscription.setSubscriptionStatus(
+                    SubscriptionStatus.CANCELLED
+            );
         }
 
         familySubscriptionRepository.save(subscription);
-        PaymentTransaction savedPayment = paymentTransactionRepository.save(payment);
+
+        PaymentTransaction savedPayment =
+                paymentTransactionRepository.save(payment);
+
+
+        // ---------------------------------------------------------
+        // AUDIT
+        // ---------------------------------------------------------
 
         auditLogService.record(
                 AuditAction.MANUAL_PAYMENT_RECORDED,
                 AuditEntityType.USER_PROFILE,
                 profile.getId(),
-                "Manual payment recorded: " + request.getPaymentStatus()
+                "Manual payment recorded: "
+                        + request.getPaymentStatus()
         );
 
-        if (request.getPaymentStatus() == RevenuePaymentStatus.PAID) {
+        if (request.getPaymentStatus()
+                == RevenuePaymentStatus.PAID) {
+
             auditLogService.record(
                     AuditAction.PAYMENT_MARKED_PAID,
                     AuditEntityType.USER_PROFILE,
@@ -195,6 +338,7 @@ public class RevenueService {
                     "Payment marked paid"
             );
         }
+
 
         return ManualPaymentResponse.builder()
                 .paymentId(savedPayment.getId())
@@ -208,43 +352,80 @@ public class RevenueService {
                 .paymentStatus(savedPayment.getPaymentStatus())
                 .paymentReference(savedPayment.getPaymentReference())
                 .paidAt(savedPayment.getPaidAt())
-                .subscriptionStatus(subscription.getSubscriptionStatus())
+                .subscriptionStatus(
+                        subscription.getSubscriptionStatus()
+                )
                 .build();
     }
+
+
+    // =========================================================
+    // PAYMENT VALIDATION
+    // =========================================================
 
     private void validateManualPayment(
             ManualPaymentRequest request,
             FamilySubscription subscription
     ) {
-        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Payment amount must be valid");
+
+        if (request.getAmount() == null
+                || request.getAmount().compareTo(BigDecimal.ZERO) < 0) {
+
+            throw new IllegalArgumentException(
+                    "Payment amount must be valid"
+            );
         }
 
         if (!"FREE_ONBOARDING".equals(subscription.getPlanCode())
-                && request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Paid plan requires amount greater than zero");
+                && request.getAmount()
+                .compareTo(BigDecimal.ZERO) <= 0) {
+
+            throw new IllegalArgumentException(
+                    "Paid plan requires amount greater than zero"
+            );
         }
 
-        if (request.getPaymentStatus() == RevenuePaymentStatus.PAID
+        if (request.getPaymentStatus()
+                == RevenuePaymentStatus.PAID
                 && request.getPaymentMode() != PaymentMode.CASH
-                && (request.getPaymentReference() == null || request.getPaymentReference().isBlank())) {
-            throw new IllegalArgumentException("Payment reference is required for non-cash paid payments");
+                && (request.getPaymentReference() == null
+                || request.getPaymentReference().isBlank())) {
+
+            throw new IllegalArgumentException(
+                    "Payment reference is required for non-cash paid payments"
+            );
         }
 
-        if (subscription.getSubscriptionStatus() == SubscriptionStatus.ACTIVE
-                && subscription.getPaymentStatus() == RevenuePaymentStatus.PAID
-                && request.getPaymentStatus() == RevenuePaymentStatus.PAID) {
-            throw new IllegalArgumentException("Subscription is already active and paid");
+        if (subscription.getSubscriptionStatus()
+                == SubscriptionStatus.ACTIVE
+                && subscription.getPaymentStatus()
+                == RevenuePaymentStatus.PAID
+                && request.getPaymentStatus()
+                == RevenuePaymentStatus.PAID) {
+
+            throw new IllegalArgumentException(
+                    "Subscription is already active and paid"
+            );
         }
     }
 
+
+    // =========================================================
+    // PLAN HELPERS
+    // =========================================================
+
     private boolean isFreePlan(RevenuePlan plan) {
+
         return "FREE_ONBOARDING".equals(plan.getCode())
                 || plan.getPrice() == null
                 || plan.getPrice().compareTo(BigDecimal.ZERO) == 0;
     }
 
-    private RevenuePlanResponse toPlanResponse(RevenuePlan plan) {
+
+    private RevenuePlanResponse toPlanResponse(
+            RevenuePlan plan
+    ) {
+
         return RevenuePlanResponse.builder()
                 .id(plan.getId())
                 .code(plan.getCode())
@@ -254,13 +435,43 @@ public class RevenueService {
                 .currency(plan.getCurrency())
                 .durationDays(plan.getDurationDays())
                 .active(plan.isActive())
-                .features(plan.getFeatures() != null
-                        ? Arrays.stream(plan.getFeatures().split("\\|")).toList()
-                        : List.of())
+                .features(parseFeatures(plan.getFeatures()))
                 .build();
     }
 
-    private SubscriptionResponse toSubscriptionResponse(FamilySubscription subscription) {
+
+    /**
+     * RevenuePlan.features is stored as a single String.
+     *
+     * Example:
+     *
+     * "Browse profiles|Family chat|Priority review"
+     *
+     * This converts it into:
+     *
+     * ["Browse profiles", "Family chat", "Priority review"]
+     */
+    private List<String> parseFeatures(String features) {
+
+        if (features == null || features.isBlank()) {
+            return List.of();
+        }
+
+        return Arrays.stream(features.split("\\|"))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .toList();
+    }
+
+
+    // =========================================================
+    // SUBSCRIPTION RESPONSE
+    // =========================================================
+
+    private SubscriptionResponse toSubscriptionResponse(
+            FamilySubscription subscription
+    ) {
+
         return SubscriptionResponse.builder()
                 .subscriptionId(subscription.getId())
                 .userId(subscription.getUserAccount().getId())
@@ -269,37 +480,29 @@ public class RevenueService {
                 .planName(subscription.getPlanName())
                 .amount(subscription.getAmount())
                 .currency(subscription.getCurrency())
-                .subscriptionStatus(subscription.getSubscriptionStatus())
-                .paymentStatus(subscription.getPaymentStatus())
+                .subscriptionStatus(
+                        subscription.getSubscriptionStatus()
+                )
+                .paymentStatus(
+                        subscription.getPaymentStatus()
+                )
                 .startAt(subscription.getStartAt())
                 .endAt(subscription.getEndAt())
-                .assignedByName(subscription.getAssignedByName())
+                .assignedByName(
+                        subscription.getAssignedByName()
+                )
                 .build();
     }
 
-    @Transactional(readOnly = true)
-    public FamilySubscriptionSummaryResponse getFamilySubscription(UUID userId) {
-        revenuePermissionService.assertCanManageFamily(userId);
 
-        return buildFamilySubscriptionSummary(userId);
-    }
+    // =========================================================
+    // FREE SUBSCRIPTION FALLBACK
+    // =========================================================
 
-    @Transactional(readOnly = true)
-    public PaymentHistoryPageResponse getFamilyPayments(
-            UUID userId,
-            int page,
-            int size,
-            RevenuePaymentStatus status,
-            PaymentMode paymentMode
+    private SubscriptionResponse freeSubscriptionFallback(
+            UUID userId
     ) {
-        revenuePermissionService.assertCanManageFamily(userId);
 
-        return buildFamilyPayments(userId, page, size, status, paymentMode);
-    }
-
-
-
-    private SubscriptionResponse freeSubscriptionFallback(UUID userId) {
         return SubscriptionResponse.builder()
                 .subscriptionId(null)
                 .userId(userId)
@@ -309,121 +512,256 @@ public class RevenueService {
                 .amount(BigDecimal.ZERO)
                 .currency("INR")
                 .subscriptionStatus(SubscriptionStatus.ACTIVE)
-                .paymentStatus(RevenuePaymentStatus.NOT_REQUIRED)
+                .paymentStatus(
+                        RevenuePaymentStatus.NOT_REQUIRED
+                )
                 .startAt(null)
                 .endAt(null)
                 .assignedByName(null)
                 .build();
     }
 
-    private PaymentHistoryItemResponse toPaymentHistoryItem(PaymentTransaction payment) {
+
+    // =========================================================
+    // PAYMENT HISTORY
+    // =========================================================
+
+    private PaymentHistoryItemResponse toPaymentHistoryItem(
+            PaymentTransaction payment
+    ) {
+
         return PaymentHistoryItemResponse.builder()
                 .paymentId(payment.getId())
-                .subscriptionId(payment.getSubscription().getId())
+                .subscriptionId(
+                        payment.getSubscription().getId()
+                )
                 .planCode(payment.getPlanCode())
                 .planName(payment.getPlanName())
                 .amount(payment.getAmount())
                 .currency(payment.getCurrency())
                 .paymentMode(payment.getPaymentMode())
                 .paymentStatus(payment.getPaymentStatus())
-                .paymentReference(payment.getPaymentReference())
+                .paymentReference(
+                        payment.getPaymentReference()
+                )
                 .paymentNote(payment.getPaymentNote())
                 .paidAt(payment.getPaidAt())
-                .receivedByName(payment.getReceivedByName())
+                .receivedByName(
+                        payment.getReceivedByName()
+                )
                 .createdAt(payment.getCreatedAt())
                 .build();
     }
+
+
+    // =========================================================
+    // REVENUE DASHBOARD
+    // =========================================================
 
     @Transactional(readOnly = true)
     public RevenueDashboardResponse getRevenueDashboard(
             LocalDate fromDate,
             LocalDate toDate
     ) {
+
         revenuePermissionService.assertCanViewDashboard();
 
         Instant from = fromDate != null
-                ? fromDate.atStartOfDay(ZoneId.systemDefault()).toInstant()
+                ? fromDate
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
                 : null;
 
         Instant to = toDate != null
-                ? toDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
+                ? toDate
+                .plusDays(1)
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
                 : null;
 
-        BigDecimal paidRevenue = paymentTransactionRepository
-                .sumAmountByStatusAndDateRange(RevenuePaymentStatus.PAID.name(), from, to);
 
-        BigDecimal pendingRevenue = paymentTransactionRepository
-                .sumAmountByStatusAndDateRange(RevenuePaymentStatus.PAID.name(), from, to);
+        BigDecimal paidRevenue =
+                paymentTransactionRepository
+                        .sumAmountByStatusAndDateRange(
+                                RevenuePaymentStatus.PAID.name(),
+                                from,
+                                to
+                        );
 
-        BigDecimal refundAmount = paymentTransactionRepository
-                .sumAmountByStatusAndDateRange(RevenuePaymentStatus.PAID.name(), from, to);
+        BigDecimal pendingRevenue =
+                paymentTransactionRepository
+                        .sumAmountByStatusAndDateRange(
+                                RevenuePaymentStatus.PENDING.name(),
+                                from,
+                                to
+                        );
 
-        Page<PaymentTransaction> recent = paymentTransactionRepository.searchPayments(
-                null,
-                null,
-                null,
-                null,
-                from,
-                to,
-                PageRequest.of(0, 10)
-        );
+        BigDecimal refundAmount =
+                paymentTransactionRepository
+                        .sumAmountByStatusAndDateRange(
+                                RevenuePaymentStatus.REFUNDED.name(),
+                                from,
+                                to
+                        );
+
+
+        if (paidRevenue == null) {
+            paidRevenue = BigDecimal.ZERO;
+        }
+
+        if (pendingRevenue == null) {
+            pendingRevenue = BigDecimal.ZERO;
+        }
+
+        if (refundAmount == null) {
+            refundAmount = BigDecimal.ZERO;
+        }
+
+
+        Page<PaymentTransaction> recent =
+                paymentTransactionRepository.searchPayments(
+                        null,
+                        null,
+                        null,
+                        null,
+                        from,
+                        to,
+                        PageRequest.of(0, 10)
+                );
+
 
         return RevenueDashboardResponse.builder()
+
                 .summary(
                         RevenueDashboardSummaryResponse.builder()
-                                .totalRevenue(paidRevenue.add(pendingRevenue))
+
+                                .totalRevenue(
+                                        paidRevenue.add(pendingRevenue)
+                                )
+
                                 .paidRevenue(paidRevenue)
+
                                 .pendingRevenue(pendingRevenue)
+
                                 .refundAmount(refundAmount)
+
                                 .activeSubscriptions(
-                                        familySubscriptionRepository.countBySubscriptionStatus(SubscriptionStatus.ACTIVE)
+                                        familySubscriptionRepository
+                                                .countBySubscriptionStatus(
+                                                        SubscriptionStatus.ACTIVE
+                                                )
                                 )
+
                                 .pendingPayments(
-                                        paymentTransactionRepository.countByPaymentStatus(RevenuePaymentStatus.PENDING)
+                                        paymentTransactionRepository
+                                                .countByPaymentStatus(
+                                                        RevenuePaymentStatus.PENDING
+                                                )
                                 )
+
                                 .freeFamilies(
-                                        familySubscriptionRepository.countBySubscriptionStatus(SubscriptionStatus.ACTIVE)
+                                        familySubscriptionRepository
+                                                .countBySubscriptionStatus(
+                                                        SubscriptionStatus.ACTIVE
+                                                )
                                 )
+
                                 .paidFamilies(
-                                        familySubscriptionRepository.countBySubscriptionStatus(SubscriptionStatus.ACTIVE)
+                                        familySubscriptionRepository
+                                                .countBySubscriptionStatus(
+                                                        SubscriptionStatus.ACTIVE
+                                                )
                                 )
+
                                 .build()
                 )
+
                 .planBreakdown(
-                        paymentTransactionRepository.planBreakdown(from, to)
+                        paymentTransactionRepository
+                                .planBreakdown(from, to)
                                 .stream()
-                                .map(row -> RevenuePlanBreakdownResponse.builder()
-                                        .planCode((String) row[0])
-                                        .planName((String) row[1])
-                                        .count((Long) row[2])
-                                        .revenue((BigDecimal) row[3])
-                                        .build())
+                                .map(row ->
+                                        RevenuePlanBreakdownResponse
+                                                .builder()
+                                                .planCode(
+                                                        (String) row[0]
+                                                )
+                                                .planName(
+                                                        (String) row[1]
+                                                )
+                                                .count(
+                                                        (Long) row[2]
+                                                )
+                                                .revenue(
+                                                        (BigDecimal) row[3]
+                                                )
+                                                .build()
+                                )
                                 .toList()
                 )
+
                 .recentPayments(
                         recent.getContent()
                                 .stream()
                                 .map(this::toRecentPayment)
                                 .toList()
                 )
+
                 .employeeCollections(
-                        paymentTransactionRepository.employeeCollections(from, to)
+                        paymentTransactionRepository
+                                .employeeCollections(from, to)
                                 .stream()
-                                .map(row -> EmployeeCollectionResponse.builder()
-                                        .employeeId((UUID) row[0])
-                                        .employeeName((String) row[1])
-                                        .amountCollected((BigDecimal) row[2])
-                                        .paymentsCount((Long) row[3])
-                                        .build())
+                                .map(row ->
+                                        EmployeeCollectionResponse
+                                                .builder()
+                                                .employeeId(
+                                                        (UUID) row[0]
+                                                )
+                                                .employeeName(
+                                                        (String) row[1]
+                                                )
+                                                .amountCollected(
+                                                        (BigDecimal) row[2]
+                                                )
+                                                .paymentsCount(
+                                                        (Long) row[3]
+                                                )
+                                                .build()
+                                )
                                 .toList()
                 )
+
                 .build();
     }
 
+
+
+    // =========================================================
+// FAMILY SUBSCRIPTION
+// =========================================================
+
     @Transactional(readOnly = true)
-    public FamilySubscriptionSummaryResponse getMySubscription(UUID userId) {
+    public FamilySubscriptionSummaryResponse getFamilySubscription(
+            UUID userId
+    ) {
+        revenuePermissionService.assertCanManageFamily(userId);
+
         return buildFamilySubscriptionSummary(userId);
     }
+
+
+    // =========================================================
+    // MY SUBSCRIPTION
+    // =========================================================
+
+    @Transactional(readOnly = true)
+    public FamilySubscriptionSummaryResponse getMySubscription(
+            UUID userId
+    ) {
+
+        return buildFamilySubscriptionSummary(userId);
+    }
+
 
     @Transactional(readOnly = true)
     public PaymentHistoryPageResponse getMyPayments(
@@ -431,9 +769,20 @@ public class RevenueService {
             int page,
             int size
     ) {
-        return buildFamilyPayments(userId, page, size, null, null);
+
+        return buildFamilyPayments(
+                userId,
+                page,
+                size,
+                null,
+                null
+        );
     }
 
+
+    // =========================================================
+    // REVENUE PAYMENTS
+    // =========================================================
 
     @Transactional(readOnly = true)
     public RevenuePaymentListPageResponse getRevenuePayments(
@@ -446,111 +795,267 @@ public class RevenueService {
             LocalDate fromDate,
             LocalDate toDate
     ) {
+
         revenuePermissionService.assertCanViewPayments();
 
         Instant from = fromDate != null
-                ? fromDate.atStartOfDay(ZoneId.systemDefault()).toInstant()
+                ? fromDate
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
                 : null;
 
         Instant to = toDate != null
-                ? toDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
+                ? toDate
+                .plusDays(1)
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
                 : null;
+
 
         Pageable pageable = PageRequest.of(
                 Math.max(page, 0),
                 Math.min(Math.max(size, 1), 50)
         );
 
-        Page<PaymentTransaction> result = paymentTransactionRepository.searchPayments(
-                status != null ? status.name() : null,
-                paymentMode != null ? paymentMode.name() : null,
-                isBlank(planCode) ? null : planCode,
-                isBlank(search) ? null : search,
-                from,
-                to,
-                pageable
-        );
+
+        Page<PaymentTransaction> result =
+                paymentTransactionRepository.searchPayments(
+                        status != null
+                                ? status.name()
+                                : null,
+
+                        paymentMode != null
+                                ? paymentMode.name()
+                                : null,
+
+                        isBlank(planCode)
+                                ? null
+                                : planCode,
+
+                        isBlank(search)
+                                ? null
+                                : search,
+
+                        from,
+                        to,
+                        pageable
+                );
+
 
         return RevenuePaymentListPageResponse.builder()
-                .payments(result.getContent().stream().map(this::toRevenuePaymentListItem).toList())
+
+                .payments(
+                        result.getContent()
+                                .stream()
+                                .map(this::toRevenuePaymentListItem)
+                                .toList()
+                )
+
                 .page(result.getNumber())
+
                 .size(result.getSize())
-                .totalElements(result.getTotalElements())
-                .totalPages(result.getTotalPages())
+
+                .totalElements(
+                        result.getTotalElements()
+                )
+
+                .totalPages(
+                        result.getTotalPages()
+                )
+
                 .last(result.isLast())
+
                 .build();
     }
 
-    private RevenueRecentPaymentResponse toRecentPayment(PaymentTransaction payment) {
-        ParentProfile parent = parentProfileRepository
-                .findByUserAccountId(payment.getUserAccount().getId())
-                .orElse(null);
+    @Transactional(readOnly = true)
+    public PaymentHistoryPageResponse getFamilyPayments(
+            UUID userId,
+            int page,
+            int size,
+            RevenuePaymentStatus status,
+            PaymentMode paymentMode
+    ) {
+        revenuePermissionService.assertCanManageFamily(userId);
+
+        return buildFamilyPayments(
+                userId,
+                Math.max(page, 0),
+                Math.min(Math.max(size, 1), 50),
+                status,
+                paymentMode
+        );
+    }
+
+
+
+    // =========================================================
+    // RECENT PAYMENT
+    // =========================================================
+
+    private RevenueRecentPaymentResponse toRecentPayment(
+            PaymentTransaction payment
+    ) {
+
+        ParentProfile parent =
+                parentProfileRepository
+                        .findByUserAccountId(
+                                payment.getUserAccount().getId()
+                        )
+                        .orElse(null);
+
 
         return RevenueRecentPaymentResponse.builder()
                 .paymentId(payment.getId())
-                .familyName(parent != null ? parent.getParentName() : null)
-                .candidateName(payment.getUserProfile() != null
-                        ? payment.getUserProfile().getCandidateFirstName()
-                        : null)
+
+                .familyName(
+                        parent != null
+                                ? parent.getParentName()
+                                : null
+                )
+
+                .candidateName(
+                        payment.getUserProfile() != null
+                                ? payment.getUserProfile()
+                                .getCandidateFirstName()
+                                : null
+                )
+
                 .planName(payment.getPlanName())
+
                 .amount(payment.getAmount())
+
                 .paymentMode(payment.getPaymentMode())
+
                 .paymentStatus(payment.getPaymentStatus())
+
                 .paidAt(payment.getPaidAt())
+
                 .build();
     }
 
 
-    private RevenuePaymentListItemResponse toRevenuePaymentListItem(PaymentTransaction payment) {
-        ParentProfile parent = parentProfileRepository
-                .findByUserAccountId(payment.getUserAccount().getId())
-                .orElse(null);
+    // =========================================================
+    // REVENUE PAYMENT LIST ITEM
+    // =========================================================
+
+    private RevenuePaymentListItemResponse toRevenuePaymentListItem(
+            PaymentTransaction payment
+    ) {
+
+        ParentProfile parent =
+                parentProfileRepository
+                        .findByUserAccountId(
+                                payment.getUserAccount().getId()
+                        )
+                        .orElse(null);
+
 
         return RevenuePaymentListItemResponse.builder()
+
                 .paymentId(payment.getId())
-                .subscriptionId(payment.getSubscription().getId())
-                .userId(payment.getUserAccount().getId())
-                .profileId(payment.getUserProfile().getId())
-                .familyName(parent != null ? parent.getParentName() : null)
-                .candidateName(payment.getUserProfile().getCandidateFirstName())
-                .phone(payment.getUserAccount().getPhone())
+
+                .subscriptionId(
+                        payment.getSubscription().getId()
+                )
+
+                .userId(
+                        payment.getUserAccount().getId()
+                )
+
+                .profileId(
+                        payment.getUserProfile().getId()
+                )
+
+                .familyName(
+                        parent != null
+                                ? parent.getParentName()
+                                : null
+                )
+
+                .candidateName(
+                        payment.getUserProfile()
+                                .getCandidateFirstName()
+                )
+
+                .phone(
+                        payment.getUserAccount().getPhone()
+                )
+
                 .planCode(payment.getPlanCode())
+
                 .planName(payment.getPlanName())
+
                 .amount(payment.getAmount())
+
                 .currency(payment.getCurrency())
+
                 .paymentMode(payment.getPaymentMode())
+
                 .paymentStatus(payment.getPaymentStatus())
-                .paymentReference(payment.getPaymentReference())
+
+                .paymentReference(
+                        payment.getPaymentReference()
+                )
+
                 .paidAt(payment.getPaidAt())
-                .receivedByName(payment.getReceivedByName())
+
+                .receivedByName(
+                        payment.getReceivedByName()
+                )
+
                 .createdAt(payment.getCreatedAt())
+
                 .build();
     }
 
+
+    // =========================================================
+    // STRING HELPER
+    // =========================================================
+
     private boolean isBlank(String value) {
-        return value == null || value.trim().isBlank();
+
+        return value == null
+                || value.trim().isBlank();
     }
 
 
-    private FamilySubscriptionSummaryResponse buildFamilySubscriptionSummary(UUID userId) {
+    // =========================================================
+    // FAMILY SUBSCRIPTION SUMMARY
+    // =========================================================
+
+    private FamilySubscriptionSummaryResponse buildFamilySubscriptionSummary(
+            UUID userId
+    ) {
 
         SubscriptionResponse currentSubscription =
                 familySubscriptionRepository
-                        .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(userId)
+
+                        .findTopByUserAccountIdAndCurrentSubscriptionTrueOrderByCreatedAtDesc(
+                                userId
+                        )
+
                         .map(this::toSubscriptionResponse)
+
                         .orElse(null);
 
+
         BigDecimal paidAmount =
-                paymentTransactionRepository.sumAmountByUserAndStatus(
-                        userId,
-                        RevenuePaymentStatus.PAID
-                );
+                paymentTransactionRepository
+                        .sumAmountByUserAndStatus(
+                                userId,
+                                RevenuePaymentStatus.PAID
+                        );
+
 
         BigDecimal pendingAmount =
-                paymentTransactionRepository.sumAmountByUserAndStatus(
-                        userId,
-                        RevenuePaymentStatus.PENDING
-                );
+                paymentTransactionRepository
+                        .sumAmountByUserAndStatus(
+                                userId,
+                                RevenuePaymentStatus.PENDING
+                        );
+
 
         if (paidAmount == null) {
             paidAmount = BigDecimal.ZERO;
@@ -560,24 +1065,52 @@ public class RevenueService {
             pendingAmount = BigDecimal.ZERO;
         }
 
+
         PaymentTransaction lastPayment =
                 paymentTransactionRepository
-                        .findTopByUserAccountIdOrderByCreatedAtDesc(userId)
+
+                        .findTopByUserAccountIdOrderByCreatedAtDesc(
+                                userId
+                        )
+
                         .orElse(null);
+
 
         PaymentSummaryResponse paymentSummary =
                 PaymentSummaryResponse.builder()
+
                         .totalPaid(paidAmount)
+
                         .totalPending(pendingAmount)
-                        .lastPaymentAt(lastPayment != null ? lastPayment.getPaidAt() : null)
-                        .lastPaymentMode(lastPayment != null ? lastPayment.getPaymentMode() : null)
+
+                        .lastPaymentAt(
+                                lastPayment != null
+                                        ? lastPayment.getPaidAt()
+                                        : null
+                        )
+
+                        .lastPaymentMode(
+                                lastPayment != null
+                                        ? lastPayment.getPaymentMode()
+                                        : null
+                        )
+
                         .build();
 
+
         return FamilySubscriptionSummaryResponse.builder()
+
                 .currentSubscription(currentSubscription)
+
                 .paymentSummary(paymentSummary)
+
                 .build();
     }
+
+
+    // =========================================================
+    // FAMILY PAYMENT HISTORY
+    // =========================================================
 
     private PaymentHistoryPageResponse buildFamilyPayments(
             UUID userId,
@@ -586,53 +1119,91 @@ public class RevenueService {
             RevenuePaymentStatus status,
             PaymentMode paymentMode
     ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                Math.max(size, 1),
+                Sort.by(
+                        Sort.Direction.DESC,
+                        "createdAt"
+                )
+        );
+
 
         Page<PaymentTransaction> paymentPage;
 
+
         if (status != null && paymentMode != null) {
-            paymentPage = paymentTransactionRepository
-                    .findByUserAccountIdAndPaymentStatusAndPaymentModeOrderByCreatedAtDesc(
-                            userId,
-                            status,
-                            paymentMode,
-                            pageable
-                    );
+
+            paymentPage =
+                    paymentTransactionRepository
+                            .findByUserAccountIdAndPaymentStatusAndPaymentModeOrderByCreatedAtDesc(
+                                    userId,
+                                    status,
+                                    paymentMode,
+                                    pageable
+                            );
+
         } else if (status != null) {
-            paymentPage = paymentTransactionRepository
-                    .findByUserAccountIdAndPaymentStatusOrderByCreatedAtDesc(
-                            userId,
-                            status,
-                            pageable
-                    );
+
+            paymentPage =
+                    paymentTransactionRepository
+                            .findByUserAccountIdAndPaymentStatusOrderByCreatedAtDesc(
+                                    userId,
+                                    status,
+                                    pageable
+                            );
+
         } else if (paymentMode != null) {
-            paymentPage = paymentTransactionRepository
-                    .findByUserAccountIdAndPaymentModeOrderByCreatedAtDesc(
-                            userId,
-                            paymentMode,
-                            pageable
-                    );
+
+            paymentPage =
+                    paymentTransactionRepository
+                            .findByUserAccountIdAndPaymentModeOrderByCreatedAtDesc(
+                                    userId,
+                                    paymentMode,
+                                    pageable
+                            );
+
         } else {
-            paymentPage = paymentTransactionRepository
-                    .findByUserAccountIdOrderByCreatedAtDesc(userId, pageable);
+
+            paymentPage =
+                    paymentTransactionRepository
+                            .findByUserAccountIdOrderByCreatedAtDesc(
+                                    userId,
+                                    pageable
+                            );
         }
 
+
         return PaymentHistoryPageResponse.builder()
+
                 .payments(
                         paymentPage.getContent()
                                 .stream()
                                 .map(this::toPaymentHistoryItem)
                                 .toList()
                 )
-                .page(paymentPage.getNumber())
-                .size(paymentPage.getSize())
-                .totalElements(paymentPage.getTotalElements())
-                .totalPages(paymentPage.getTotalPages())
-                .last(paymentPage.isLast())
+
+                .page(
+                        paymentPage.getNumber()
+                )
+
+                .size(
+                        paymentPage.getSize()
+                )
+
+                .totalElements(
+                        paymentPage.getTotalElements()
+                )
+
+                .totalPages(
+                        paymentPage.getTotalPages()
+                )
+
+                .last(
+                        paymentPage.isLast()
+                )
+
                 .build();
     }
-
-
-
-
 }

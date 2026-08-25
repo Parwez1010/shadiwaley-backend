@@ -4,7 +4,7 @@ import com.shadiwaley.server.employee.infrastructure.entity.EmployeeAccount;
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
 import com.shadiwaley.server.revenue.domain.RevenuePaymentStatus;
 import com.shadiwaley.server.revenue.domain.SubscriptionSource;
-import com.shadiwaley.server.revenue.domain.SubscriptionStatus;
+import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import jakarta.persistence.*;
 import lombok.Getter;

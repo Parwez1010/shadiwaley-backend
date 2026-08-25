@@ -1,12 +1,13 @@
 package com.shadiwaley.server.subscription.infrastructure.entity;
 
-import com.shadiwaley.server.subscription.domain.PlanType;
+import com.shadiwaley.server.revenue.infrastructure.entity.RevenuePlan;
 import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
 import com.shadiwaley.server.user.infrastructure.entity.UserAccount;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -19,19 +20,53 @@ public class Subscription {
     @Id
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_account_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "user_account_id",
+            nullable = false
+    )
     private UserAccount userAccount;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "plan_type", nullable = false, length = 40)
-    private PlanType planType;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "plan_id",
+            nullable = false
+    )
+    private RevenuePlan plan;
+
+    /**
+     * Snapshot of the commercial terms at purchase time.
+     *
+     * These MUST NOT change when the current plan price changes.
+     */
+    @Column(name = "plan_code_snapshot", nullable = false, length = 80)
+    private String planCodeSnapshot;
+
+    @Column(name = "plan_name_snapshot", nullable = false, length = 150)
+    private String planNameSnapshot;
+
+    @Column(
+            name = "amount_paid",
+            nullable = false,
+            precision = 12,
+            scale = 2
+    )
+    private BigDecimal amountPaid;
+
+    @Column(name = "currency", nullable = false, length = 10)
+    private String currency;
+
+    @Column(name = "duration_days")
+    private Integer durationDays;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private SubscriptionStatus status;
 
-    @Column(name = "activated_at", nullable = false)
+    /**
+     * NULL while PAYMENT_PENDING.
+     */
+    @Column(name = "activated_at")
     private Instant activatedAt;
 
     @Column(name = "expires_at")
@@ -43,14 +78,14 @@ public class Subscription {
     @Column(name = "razorpay_order_id", length = 100)
     private String razorpayOrderId;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     @PrePersist
-    public void prePersist() {
+    protected void onCreate() {
         Instant now = Instant.now();
 
         if (id == null) {
@@ -58,11 +93,11 @@ public class Subscription {
         }
 
         if (status == null) {
-            status = SubscriptionStatus.ACTIVE;
+            status = SubscriptionStatus.PAYMENT_PENDING;
         }
 
-        if (activatedAt == null) {
-            activatedAt = now;
+        if (currency == null) {
+            currency = "INR";
         }
 
         createdAt = now;
@@ -70,7 +105,7 @@ public class Subscription {
     }
 
     @PreUpdate
-    public void preUpdate() {
+    protected void onUpdate() {
         updatedAt = Instant.now();
     }
 }

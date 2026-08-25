@@ -25,7 +25,6 @@ import com.shadiwaley.server.rishta.domain.RishtaRequestStatus;
 import com.shadiwaley.server.rishta.infrastructure.entity.RishtaRequest;
 import com.shadiwaley.server.safety.application.service.UserSafetyService;
 import com.shadiwaley.server.security.AuthUser;
-import com.shadiwaley.server.subscription.domain.PlanType;
 import com.shadiwaley.server.subscription.domain.SubscriptionStatus;
 import com.shadiwaley.server.subscription.infrastructure.repository.SubscriptionRepository;
 import com.shadiwaley.server.user.domain.UserSide;
@@ -125,6 +124,7 @@ public class FamilyChatService {
         return ChatMode.DIRECT_FAMILY;
     }
 
+
     private boolean hasPaidPlan(UUID userId) {
 
         return subscriptionRepository
@@ -136,12 +136,7 @@ public class FamilyChatService {
                         subscription.getExpiresAt() == null
                                 || subscription.getExpiresAt().isAfter(Instant.now())
                 )
-                .map(subscription ->
-                        switch (subscription.getPlanType()) {
-                            case BASIC_299, PREMIUM_999, ELITE_2499 -> true;
-                            case FREE_ONBOARDING -> false;
-                        }
-                )
+                .map(subscription -> isPaidPlan(subscription.getPlanCodeSnapshot()))
                 .orElse(false);
     }
 
@@ -156,14 +151,28 @@ public class FamilyChatService {
                         subscription.getExpiresAt() == null
                                 || subscription.getExpiresAt().isAfter(Instant.now())
                 )
-                .map(subscription ->
-                        switch (subscription.getPlanType()) {
-                            case BASIC_299, PREMIUM_999, ELITE_2499 -> true;
-                            case FREE_ONBOARDING -> false;
-                        }
-                )
+                .map(subscription -> isPaidPlan(subscription.getPlanCodeSnapshot()))
                 .orElse(false);
     }
+
+    private boolean isPaidPlan(String planCode) {
+
+        if (planCode == null || planCode.isBlank()) {
+            return false;
+        }
+
+        return switch (planCode) {
+            case "BASIC_299",
+                 "PREMIUM_999",
+                 "ELITE_2499" -> true;
+
+            case "FREE_ONBOARDING" -> false;
+
+            default -> false;
+        };
+    }
+
+
 
     private void linkProposalAndCrm(
             FamilyChatRoom room,

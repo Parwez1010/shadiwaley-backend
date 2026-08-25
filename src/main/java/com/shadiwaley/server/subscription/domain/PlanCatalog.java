@@ -1,5 +1,6 @@
 package com.shadiwaley.server.subscription.domain;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public final class PlanCatalog {
@@ -10,9 +11,8 @@ public final class PlanCatalog {
     public static List<PlanDefinition> allPlans() {
         return List.of(
                 freeOnboarding(),
-                basic(),
-                premium(),
-                elite()
+                sixMonth999(),
+                lifetime1999()
         );
     }
 
@@ -21,14 +21,17 @@ public final class PlanCatalog {
                 .stream()
                 .filter(plan -> plan.planType() == planType)
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Invalid plan type"));
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Invalid plan type")
+                );
     }
 
     private static PlanDefinition freeOnboarding() {
+
         return new PlanDefinition(
                 PlanType.FREE_ONBOARDING,
                 "Free Onboarding",
-                0,
+                BigDecimal.ZERO,
                 "Free",
                 0,
                 -1,
@@ -51,37 +54,14 @@ public final class PlanCatalog {
         );
     }
 
-    private static PlanDefinition basic() {
-        return new PlanDefinition(
-                PlanType.BASIC_299,
-                "Basic ₹299",
-                29900,
-                "Monthly",
-                30,
-                5,
-                0,
-                true,
-                true,
-                false,
-                false,
-                false,
-                false,
-                List.of(
-                        "Unlimited profile browsing",
-                        "5 rishta requests per month",
-                        "Family chat after rishta acceptance",
-                        "Standard profile review"
-                )
-        );
-    }
+    private static PlanDefinition sixMonth999() {
 
-    private static PlanDefinition premium() {
         return new PlanDefinition(
-                PlanType.PREMIUM_999,
-                "Premium ₹999",
-                99900,
-                "Monthly",
-                30,
+                PlanType.SIX_MONTH_999,
+                "Premium",
+                new BigDecimal("999.00"),
+                "6 Months",
+                180,
                 -1,
                 3,
                 true,
@@ -100,12 +80,13 @@ public final class PlanCatalog {
         );
     }
 
-    private static PlanDefinition elite() {
+    private static PlanDefinition lifetime1999() {
+
         return new PlanDefinition(
-                PlanType.ELITE_2499,
-                "Elite ₹2499",
-                249900,
-                "One-time",
+                PlanType.LIFETIME_1999,
+                "Elite",
+                new BigDecimal("1999.00"),
+                "Lifetime",
                 0,
                 -1,
                 5,
