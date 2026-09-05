@@ -35,6 +35,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/initiate").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/verify").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/resend/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").permitAll()
 
                         .requestMatchers("/ws/**").permitAll()
 

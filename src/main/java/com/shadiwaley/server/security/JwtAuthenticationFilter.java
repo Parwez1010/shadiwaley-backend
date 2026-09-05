@@ -30,8 +30,8 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
 
-        return path.startsWith("/api/v1/auth/")
-                || path.startsWith("/api/v1/admin/auth/")
+        return ("POST".equals(request.getMethod())
+                && (path.equals("/api/v1/auth/refresh") || path.equals("/api/v1/auth/logout")))
                 || path.startsWith("/api/v1/public/")
                 || path.equals("/actuator/health");
     }
