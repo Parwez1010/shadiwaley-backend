@@ -20,13 +20,11 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class AdminAuthService {
 
-    private static final int MAX_FAILED_ATTEMPTS = 5;
-    private static final long LOCK_MINUTES = 30;
-
     private final EmployeeAccountRepository employeeAccountRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final EmployeePermissionService permissionService;
+    private final EmployeeLoginFailureService loginFailureService;
 
     @Transactional
     public AdminLoginResponse login(AdminLoginRequest request) {
@@ -46,7 +44,7 @@ public class AdminAuthService {
         }
 
         if (!passwordEncoder.matches(request.getPassword(), employee.getPasswordHash())) {
-            handleFailedLogin(employee);
+            loginFailureService.recordFailure(employee.getId());
             throw new IllegalArgumentException("Invalid email or password");
         }
 
@@ -98,19 +96,6 @@ public class AdminAuthService {
         employee.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         employee.setMustChangePassword(false);
         employee.setPasswordChangedAt(Instant.now());
-
-        employeeAccountRepository.save(employee);
-    }
-
-    private void handleFailedLogin(EmployeeAccount employee) {
-        int attempts = employee.getFailedLoginAttempts() == null ? 0 : employee.getFailedLoginAttempts();
-        attempts++;
-
-        employee.setFailedLoginAttempts(attempts);
-
-        if (attempts >= MAX_FAILED_ATTEMPTS) {
-            employee.setLockedUntil(Instant.now().plusSeconds(LOCK_MINUTES * 60));
-        }
 
         employeeAccountRepository.save(employee);
     }
