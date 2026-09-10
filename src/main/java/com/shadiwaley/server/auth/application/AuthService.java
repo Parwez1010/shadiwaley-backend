@@ -48,6 +48,7 @@ public class AuthService {
     private final JwtService jwtService;
 
     private final RefreshTokenService refreshTokenService;
+    private final OtpFailureService otpFailureService;
 
     @Value("${app.otp.expiry-minutes}")
     private long otpExpiryMinutes;
@@ -158,10 +159,9 @@ public class AuthService {
         }
 
         if (!session.getOtpCode().equals(request.getOtp())) {
-            session.setAttemptCount(session.getAttemptCount() + 1);
-            otpSessionRepository.save(session);
+            int attemptCount = otpFailureService.recordFailure(session.getId());
 
-            int remainingAttempts = maxAttempts - session.getAttemptCount();
+            int remainingAttempts = maxAttempts - attemptCount;
             throw new IllegalArgumentException("Invalid OTP. Remaining attempts: " + remainingAttempts);
         }
 

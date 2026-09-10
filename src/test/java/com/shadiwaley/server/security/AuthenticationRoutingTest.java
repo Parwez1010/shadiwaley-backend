@@ -2,6 +2,7 @@ package com.shadiwaley.server.security;
 
 import com.shadiwaley.server.auth.api.AuthController;
 import com.shadiwaley.server.auth.application.AuthService;
+import com.shadiwaley.server.auth.application.OtpFailureService;
 import com.shadiwaley.server.auth.application.RefreshTokenService;
 import com.shadiwaley.server.auth.infrastructure.entity.UserRefreshToken;
 import com.shadiwaley.server.auth.infrastructure.repository.OtpSessionRepository;
@@ -61,6 +62,7 @@ class AuthenticationRoutingTest {
     @Autowired BCryptPasswordEncoder encoder;
     @SpyBean JwtService jwtService;
     @SpyBean AuthService authService;
+    @MockBean OtpFailureService otpFailureService;
     @MockBean AdminAuthService adminAuthService;
     @MockBean UserAccountRepository users;
     @MockBean EmployeeAccountRepository employees;
