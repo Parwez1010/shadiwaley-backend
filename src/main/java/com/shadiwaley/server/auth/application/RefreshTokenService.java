@@ -17,6 +17,7 @@ import java.util.UUID;
 public class RefreshTokenService {
 
     private final UserRefreshTokenRepository refreshTokenRepository;
+    private final RefreshTokenReuseRevocationService reuseRevocationService;
 
     private final BCryptPasswordEncoder passwordEncoder;
 
@@ -68,8 +69,12 @@ public class RefreshTokenService {
                                 new IllegalArgumentException("Refresh token not found"));
 
         if (refreshToken.getRevokedAt() != null) {
+            // A token ID alone must not authorize revoking the user's other sessions.
+            if (!passwordEncoder.matches(secret, refreshToken.getTokenHash())) {
+                throw new IllegalArgumentException("Invalid refresh token");
+            }
 
-            revokeAllForUser(
+            reuseRevocationService.revokeActiveTokensForUser(
                     refreshToken.getUserAccount().getId()
             );
 

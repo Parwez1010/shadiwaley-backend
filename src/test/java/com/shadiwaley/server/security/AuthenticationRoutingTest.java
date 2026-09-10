@@ -4,6 +4,7 @@ import com.shadiwaley.server.auth.api.AuthController;
 import com.shadiwaley.server.auth.application.AuthService;
 import com.shadiwaley.server.auth.application.OtpFailureService;
 import com.shadiwaley.server.auth.application.RefreshTokenService;
+import com.shadiwaley.server.auth.application.RefreshTokenReuseRevocationService;
 import com.shadiwaley.server.auth.infrastructure.entity.UserRefreshToken;
 import com.shadiwaley.server.auth.infrastructure.repository.OtpSessionRepository;
 import com.shadiwaley.server.auth.infrastructure.repository.UserRefreshTokenRepository;
@@ -63,6 +64,7 @@ class AuthenticationRoutingTest {
     @SpyBean JwtService jwtService;
     @SpyBean AuthService authService;
     @MockBean OtpFailureService otpFailureService;
+    @MockBean RefreshTokenReuseRevocationService reuseRevocationService;
     @MockBean AdminAuthService adminAuthService;
     @MockBean UserAccountRepository users;
     @MockBean EmployeeAccountRepository employees;
