@@ -1,7 +1,6 @@
 package com.shadiwaley.server.auth.dto.request;
 
 import com.shadiwaley.server.user.domain.UserSide;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
@@ -14,4 +13,6 @@ public class OtpInitiateRequest {
     private String phone;
 
     private UserSide side;
+
+    private String guardianName;
 }

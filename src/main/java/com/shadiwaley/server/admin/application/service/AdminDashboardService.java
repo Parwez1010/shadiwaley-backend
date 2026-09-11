@@ -212,7 +212,8 @@ public class AdminDashboardService {
         UserAccount account = userAccountRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User account not found"));
 
-        UserProfile profile = userProfileRepository.findByUserAccountId(userId)
+        UserProfile profile =
+                userProfileRepository.findWithLanguagesAndInterestsByUserAccountId(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User profile not found"));
 
         ParentProfile parent = parentProfileRepository.findByUserAccountId(userId)

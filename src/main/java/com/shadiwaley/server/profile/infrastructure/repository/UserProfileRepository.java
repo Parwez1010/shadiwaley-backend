@@ -1,7 +1,8 @@
 package com.shadiwaley.server.profile.infrastructure.repository;
 
 import com.shadiwaley.server.profile.infrastructure.entity.UserProfile;
-import io.lettuce.core.dynamic.annotation.Param;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,6 +20,14 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, UUID>,
     java.util.List<com.shadiwaley.server.profile.infrastructure.entity.UserProfile>
     findTop20ByProfileStatusOrderByCreatedAtDesc(
             com.shadiwaley.server.profile.domain.ProfileStatus profileStatus
+    );
+
+    @EntityGraph(attributePaths = {
+            "languagesKnown",
+            "interests"
+    })
+    Optional<UserProfile> findWithLanguagesAndInterestsByUserAccountId(
+            UUID userAccountId
     );
 
     Page<UserProfile> findAll(Pageable pageable);

@@ -27,6 +27,9 @@ public class OtpSession {
     @Column(nullable = false, length = 10)
     private UserSide side;
 
+    @Column(name = "guardian_name", length = 150)
+    private String guardianName;
+
     @Column(name = "otp_code", nullable = false, length = 10)
     private String otpCode;
 

@@ -67,6 +67,7 @@ public class AuthService {
 
     private final PasswordEncoder refreshTokenEncoder = new BCryptPasswordEncoder();
 
+
     public OtpInitiateResponse initiateOtp(OtpInitiateRequest request) {
         validateOtpRequestLimit(request.getPhone());
         validateResendCooldown(request.getPhone());
@@ -77,6 +78,10 @@ public class AuthService {
 
         if (existingUser == null && request.getSide() == null) {
             throw new IllegalArgumentException("Side is required for new registration");
+        }
+
+        if (existingUser == null && (request.getGuardianName() == null || request.getGuardianName().isBlank())) {
+            throw new IllegalArgumentException("Guardian name is required for new registration");
         }
 
         if (existingUser != null && !"ACTIVE".equalsIgnoreCase(existingUser.getAccountStatus())) {
@@ -93,6 +98,7 @@ public class AuthService {
                         ? existingUser.getSide()
                         : request.getSide()
         );
+        session.setGuardianName(request.getGuardianName());
         session.setOtpCode(otp);
         session.setVerified(false);
         session.setAttemptCount(0);
@@ -106,6 +112,8 @@ public class AuthService {
                 .expiresInSeconds(otpExpiryMinutes * 60)
                 .build();
     }
+
+
 
     public OtpInitiateResponse resendOtp(UUID tempToken) {
         OtpSession oldSession = otpSessionRepository.findByTempToken(tempToken)
@@ -123,6 +131,7 @@ public class AuthService {
         OtpSession session = new OtpSession();
         session.setPhone(oldSession.getPhone());
         session.setSide(oldSession.getSide());
+        session.setGuardianName(oldSession.getGuardianName());
         session.setOtpCode(otp);
         session.setVerified(false);
         session.setAttemptCount(0);
@@ -192,6 +201,7 @@ public class AuthService {
             ParentProfile parent = new ParentProfile();
             parent.setUserAccount(userAccount);
             parent.setParentPhone(userAccount.getPhone());
+            parent.setParentName(session.getGuardianName());
             parentProfileRepository.save(parent);
 
             UserPreferences preferences = new UserPreferences();
